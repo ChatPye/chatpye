@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { VideoStatus } from "@/components/video/video-status"
 
 interface Message {
   id: string
@@ -53,20 +54,48 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [isProcessingVideo, setIsProcessingVideo] = useState(false)
-  const [processingStatus, setProcessingStatus] = useState("")
+  const [processingStatus, setProcessingStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle')
+  const [processingMessage, setProcessingMessage] = useState("")
+  const [jobId, setJobId] = useState<string | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null)
   const { toast } = useToast()
   const [selectedModel, setSelectedModel] = useState(models[0])
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to bottom when new messages arrive
+  // Poll for job status
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
-    }
-  }, [messages])
+    if (!jobId || processingStatus === 'completed' || processingStatus === 'failed') return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/video/status/${jobId}`)
+        if (!response.ok) throw new Error('Failed to fetch status')
+        
+        const data = await response.json()
+        
+        if (data.status === 'completed') {
+          setProcessingStatus('completed')
+          setProcessingMessage('Video processed and ready for chat')
+          clearInterval(pollInterval)
+        } else if (data.status === 'failed') {
+          setProcessingStatus('failed')
+          setProcessingMessage('Failed to process video')
+          clearInterval(pollInterval)
+        } else {
+          setProcessingStatus('processing')
+          setProcessingMessage('Processing video transcript...')
+        }
+      } catch (error) {
+        console.error('Error polling status:', error)
+        setProcessingStatus('failed')
+        setProcessingMessage('Error checking processing status')
+        clearInterval(pollInterval)
+      }
+    }, 2000)
+
+    return () => clearInterval(pollInterval)
+  }, [jobId, processingStatus])
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,12 +120,12 @@ export default function Home() {
 
     setIsLoading(true)
     setVideoId(id)
-    setIsProcessingVideo(true)
-    setProcessingStatus("Loading video...")
+    setProcessingStatus('processing')
+    setProcessingMessage("Starting video processing...")
 
     try {
-      // Fetch video info using POST method
-      const response = await fetch('/api/video-info', {
+      // Start video processing
+      const processResponse = await fetch('/api/video/process', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,25 +133,37 @@ export default function Home() {
         body: JSON.stringify({ youtubeUrl: url }),
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.details || error.error || 'Failed to process video')
+      if (!processResponse.ok) {
+        throw new Error('Failed to start video processing')
       }
 
-      const data = await response.json()
-      if (data.error) {
-        throw new Error(data.details || data.error)
+      const processData = await processResponse.json()
+      setJobId(processData.jobId)
+
+      // Fetch video info
+      const infoResponse = await fetch('/api/video-info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ youtubeUrl: url }),
+      })
+
+      if (!infoResponse.ok) {
+        throw new Error('Failed to fetch video info')
       }
 
-      setVideoInfo(data)
-      setIsProcessingVideo(false)
+      const infoData = await infoResponse.json()
+      setVideoInfo(infoData)
       
       toast({
         title: "Success",
-        description: "Video loaded successfully",
+        description: "Video processing started",
       })
     } catch (error) {
       console.error('Error:', error)
+      setProcessingStatus('failed')
+      setProcessingMessage('Failed to process video')
       toast({
         variant: "destructive",
         title: "Error",
@@ -205,264 +246,66 @@ export default function Home() {
 
       {/* Main Content */}
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left Column - Video Section and Recommended */}
-          <div className="lg:col-span-3 order-1">
-            <div className="flex flex-col gap-6">
-              {/* Video Player Container */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column - Video Section and Info */}
+          <div className="lg:col-span-8 space-y-6 order-1">
+            {/* Video Player */}
+            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
               <div className="w-full">
-                <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
-                  <div className="w-full">
-                    {videoId ? (
-                      <div className="w-full aspect-video bg-black relative">
-                        <VideoPlayer videoId={videoId} />
-                      </div>
-                    ) : (
-                      <div className="w-full aspect-video bg-black relative flex flex-col items-center justify-center p-4 text-center">
-                        <h2 className="text-[18px] sm:text-[20px] font-medium text-black mb-2">Welcome to ChatPye</h2>
-                        <p className="text-[14px] sm:text-[16px] text-[#666666]">Your AI-powered video learning companion</p>
-                      </div>
-                    )}
+                {videoId ? (
+                  <div className="w-full aspect-video bg-black relative">
+                    <VideoPlayer videoId={videoId} />
                   </div>
-                </Card>
-              </div>
-
-              {/* Video Info Container */}
-              {videoInfo && (
-                <div className="w-full">
-                  <Card className="bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden">
-                    <div className="p-6">
-                      <h2 className="text-lg font-medium font-['Clarendon_Blk_BT'] text-[#1a1a1a] mb-4">
-                        {videoInfo.title}
-                      </h2>
-                      
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex mb-2">
-                          <span className="text-[#666666] font-medium">
-                            {videoInfo.views} views - {videoInfo.publishedAt}
-                          </span>
-                        </div>
-                        <p className="text-sm text-[#666666] line-clamp-3">
-                          {videoInfo.description}
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              )}
-
-              {/* Recommended Videos Card - Desktop */}
-              <div className="w-full hidden lg:block">
-                <Card className="bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden">
-                  <div className="p-6">
-                    <h3 className="text-lg font-medium text-[#1a1a1a] mb-4">Recommended Videos</h3>
-                    <div className="space-y-4">
-                      {/* Placeholder for recommended videos */}
-                      <div className="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <div className="w-40 h-24 bg-gray-200 rounded-lg"></div>
-                        <div className="flex-1">
-                          <h4 className="font-medium text-[#1a1a1a] mb-1">Loading recommendations...</h4>
-                          <p className="text-sm text-[#666666]">Coming soon</p>
-                        </div>
-                      </div>
-                    </div>
+                ) : (
+                  <div className="w-full aspect-video bg-black relative flex flex-col items-center justify-center p-4 text-center">
+                    <h2 className="text-[18px] sm:text-[20px] font-medium text-black mb-2">Welcome to ChatPye</h2>
+                    <p className="text-[14px] sm:text-[16px] text-[#666666]">Your AI-powered video learning companion</p>
                   </div>
-                </Card>
+                )}
               </div>
-            </div>
+            </Card>
+
+            {/* Video Info */}
+            {videoId && (
+              <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
+                <VideoInfo videoId={videoId} />
+              </Card>
+            )}
           </div>
 
-          {/* Right Column - Chat Interface */}
-          <div className="lg:col-span-2 order-2">
-            <div className="flex flex-col gap-6 h-[calc(100vh-8rem)] overflow-y-auto md:h-auto sm:h-[calc(100vh-8rem)] sm:pb-20">
-              {/* Chat Title Card */}
-              <Card className="bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-[#666666]">Model Selector</span>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full">
-                              <Settings className="h-3 w-3" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
-                            {models.map((model) => (
-                              <DropdownMenuItem
-                                key={model.id}
-                                className="flex flex-col items-start p-2 cursor-pointer"
-                                onClick={() => setSelectedModel(model)}
-                              >
-                                <div className="flex items-center justify-between w-full">
-                                  <span className="font-medium">{model.name}</span>
-                                  {selectedModel.id === model.id && (
-                                    <span className="text-indigo-600">✓</span>
-                                  )}
-                                </div>
-                                <span className="text-xs text-gray-500">{model.description}</span>
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" className="rounded-lg hover:bg-gray-100 border-[#a78bfa] hover:border-[#8b5cf6]">
-                      <span className="mr-1">+</span> New Chat
-                    </Button>
-                  </div>
-                  
-                  <h1 className="text-2xl font-semibold text-center font-['Space_Grotesk'] text-[#1a1a1a] tracking-tight">ChatPye</h1>
-                  <p className="text-center text-sm text-[#666666] mt-1">Your Personal AI Tutor for Video Learning</p>
+          {/* Right Column - Chat */}
+          <div className="lg:col-span-4 order-2">
+            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100 h-[calc(100vh-12rem)]">
+              {/* Video Status */}
+              {processingStatus !== 'idle' && (
+                <div className="border-b border-slate-100">
+                  <VideoStatus 
+                    status={processingStatus} 
+                    message={processingMessage} 
+                  />
                 </div>
-              </Card>
+              )}
+              <ChatTabs jobId={jobId} disabled={!jobId} />
+            </Card>
+          </div>
 
-              {/* Chat Interface Card */}
-              <Card className="flex-1 bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden">
-                <Tabs defaultValue="chat" className="w-full h-full flex flex-col">
-                  <TabsList className="w-full justify-start px-6 py-2 border-b border-gray-200">
-                    <TabsTrigger value="chat" className="flex items-center gap-2 px-4 py-2">
-                      <MessageSquare className="h-4 w-4" />
-                      Chat
-                    </TabsTrigger>
-                    <TabsTrigger value="timeline" className="flex items-center gap-2 px-4 py-2">
-                      <Clock className="h-4 w-4" />
-                      Timeline
-                    </TabsTrigger>
-                    <TabsTrigger value="copy" className="flex items-center gap-2 px-4 py-2">
-                      <Copy className="h-4 w-4" />
-                      Copy
-                    </TabsTrigger>
-                    <TabsTrigger value="notes" className="flex items-center gap-2 px-4 py-2">
-                      <FileText className="h-4 w-4" />
-                      Notes
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="chat" className="flex-1 flex flex-col p-6">
-                    {/* Processing Status */}
-                    {isProcessingVideo && (
-                      <div className="mb-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                        <div className="flex items-center text-indigo-700">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-700 mr-2"></div>
-                          <span className="text-sm font-medium">{processingStatus}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div 
-                      ref={chatContainerRef}
-                      className="flex-1 overflow-y-auto min-h-0 scroll-smooth"
-                      style={{ maxHeight: 'calc(100vh - 16rem)' }}
-                    >
-                      {/* Example Prompts */}
-                      <div className="space-y-3 mb-6">
-                        <h3 className="text-sm font-medium text-[#666666] mb-2">Example Prompts</h3>
-                        <div className="grid grid-cols-1 gap-2">
-                          {examplePrompts.map((prompt, index) => (
-                            <Button
-                              key={index}
-                              variant="outline"
-                              className="w-full justify-start text-left border-indigo-200 hover:border-indigo-600 hover:bg-indigo-50 text-indigo-600 py-3 px-4"
-                              onClick={() => setInputValue(prompt)}
-                            >
-                              {prompt}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Chat Messages */}
-                      <div className="space-y-4">
-                        {messages.map((message) => (
-                          <div
-                            key={message.id}
-                            className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div
-                              className={`max-w-[80%] rounded-lg p-3 ${
-                                message.isUser
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-gray-100 text-gray-900'
-                              }`}
-                            >
-                              {message.content}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Chat Input */}
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Type your message..."
-                          value={inputValue}
-                          onChange={(e) => setInputValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault()
-                              handleSendMessage()
-                            }
-                          }}
-                          className="flex-1"
-                        />
-                        <Button
-                          onClick={handleSendMessage}
-                          disabled={!inputValue.trim()}
-                          className="bg-indigo-600 hover:bg-indigo-700"
-                        >
-                          <Send className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  {/* Other tab contents remain the same */}
-                  <TabsContent value="timeline" className="p-6">
-                    <div className="flex items-center justify-center h-full text-[#666666]">
-                      <Clock className="h-8 w-8 mr-2" />
-                      Timeline coming soon...
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="copy" className="p-6">
-                    <div className="flex items-center justify-center h-full text-[#666666]">
-                      <Copy className="h-8 w-8 mr-2" />
-                      Copy feature coming soon...
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="notes" className="p-6">
-                    <div className="flex items-center justify-center h-full text-[#666666]">
-                      <FileText className="h-8 w-8 mr-2" />
-                      Notes feature coming soon...
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </Card>
-
-              {/* Recommended Videos Card - Mobile */}
-              <div className="block lg:hidden w-full mt-4 order-2">
-                <Card className="bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden">
-                  <div className="p-6">
-                    <h3 className="text-lg font-medium text-[#1a1a1a] mb-4">Recommended Videos</h3>
-                    <div className="space-y-4">
-                      {/* Placeholder for recommended videos */}
-                      <div className="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <div className="w-40 h-24 bg-gray-200 rounded-lg"></div>
-                        <div className="flex-1">
-                          <h4 className="font-medium text-[#1a1a1a] mb-1">Loading recommendations...</h4>
-                          <p className="text-sm text-[#666666]">Coming soon</p>
-                        </div>
-                      </div>
+          {/* Recommended Videos - Full width on mobile, left column on desktop */}
+          <div className="lg:col-span-8 order-3">
+            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
+              <div className="p-6">
+                <h3 className="text-lg font-medium text-[#1a1a1a] mb-4">Recommended Videos</h3>
+                <div className="space-y-4">
+                  {/* Placeholder for recommended videos */}
+                  <div className="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <div className="w-40 h-24 bg-gray-200 rounded-lg"></div>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-[#1a1a1a] mb-1">Loading recommendations...</h4>
+                      <p className="text-sm text-[#666666]">Coming soon</p>
                     </div>
                   </div>
-                </Card>
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
         </div>
       </div>
