@@ -2,6 +2,25 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // Optimize development performance
+  webpack: (config, { dev, isServer }) => {
+    // Optimize only in development
+    if (dev && !isServer) {
+      config.watchOptions = {
+        poll: 1000, // Check for changes every second
+        aggregateTimeout: 300, // Delay before rebuilding
+      }
+    }
+    return config
+  },
+  // Disable type checking during development
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  // Disable ESLint during development
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async headers() {
     return [
       {

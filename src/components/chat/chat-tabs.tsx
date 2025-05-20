@@ -161,29 +161,29 @@ export function ChatTabs({ jobId, disabled }: ChatTabsProps) {
     <Card className="h-full flex flex-col">
       <div className="p-4 border-b bg-white sticky top-0 z-10">
         <h2 className="text-xl font-semibold text-indigo-600 mb-2">ChatPye</h2>
-        <p className="text-sm text-gray-600">Your AI-powered video learning companion</p>
+        <p className="text-sm text-gray-500">Your AI-powered video learning companion</p>
       </div>
       <Tabs defaultValue="chat" className="flex-1">
         <TabsList className="w-full justify-start border-b rounded-none bg-white sticky top-[5.5rem] z-10 p-0">
-          <TabsTrigger value="chat" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
+          <TabsTrigger value="chat" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2 text-base">
+            <MessageSquare className="h-5 w-5" />
             Chat
           </TabsTrigger>
-          <TabsTrigger value="timeline" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2">
-            <Clock className="h-4 w-4" />
+          <TabsTrigger value="timeline" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2 text-base">
+            <Clock className="h-5 w-5" />
             Timeline
           </TabsTrigger>
-          <TabsTrigger value="notes" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2">
-            <FileText className="h-4 w-4" />
+          <TabsTrigger value="notes" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2 text-base">
+            <FileText className="h-5 w-5" />
             Notes
           </TabsTrigger>
-          <TabsTrigger value="agents" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2">
-            <Bot className="h-4 w-4" />
+          <TabsTrigger value="agents" className="data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2 text-base">
+            <Bot className="h-5 w-5" />
             Agents
           </TabsTrigger>
         </TabsList>
         <TabsContent value="chat" className="h-[calc(100%-8.5rem)] m-0">
-          {jobId && <ChatContainer jobId={jobId} />}
+          <ChatContainer jobId={jobId} />
         </TabsContent>
         <TabsContent value="timeline" className="h-[calc(100%-8.5rem)] m-0">
           <div className="p-4">

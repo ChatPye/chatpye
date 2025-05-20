@@ -1,48 +1,31 @@
 import { Card } from "@/components/ui/card"
-import { Clock, CheckCircle2, AlertCircle } from "lucide-react"
+import { Clock, CheckCircle2, AlertCircle, Loader2, CheckCircle, XCircle } from "lucide-react"
 
 interface VideoStatusProps {
-  status: 'idle' | 'processing' | 'completed' | 'failed'
-  message?: string
+  status: string
 }
 
-export function VideoStatus({ status, message }: VideoStatusProps) {
-  const getStatusContent = () => {
-    switch (status) {
-      case 'processing':
-        return {
-          icon: <Clock className="h-6 w-6 text-indigo-600 animate-spin" />,
-          text: message || "Processing video transcript...",
-          color: "text-indigo-600"
-        }
-      case 'completed':
-        return {
-          icon: <CheckCircle2 className="h-6 w-6 text-indigo-600" />,
-          text: message || "Video processed and ready for chat",
-          color: "text-indigo-600"
-        }
-      case 'failed':
-        return {
-          icon: <AlertCircle className="h-6 w-6 text-red-500" />,
-          text: message || "Failed to process video",
-          color: "text-red-500"
-        }
-      default:
-        return null
-    }
-  }
-
-  const statusContent = getStatusContent()
-  if (!statusContent) return null
-
+export function VideoStatus({ status }: VideoStatusProps) {
   return (
-    <Card className="p-4 bg-white shadow-sm border border-indigo-100 rounded-xl">
-      <div className="flex items-center gap-3">
-        {statusContent.icon}
-        <span className={`font-medium ${statusContent.color}`}>
-          {statusContent.text}
-        </span>
-      </div>
-    </Card>
+    <div className="flex items-center gap-2">
+      {status === 'processing' && (
+        <div className="flex items-center gap-2 text-indigo-600">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Processing video...</span>
+        </div>
+      )}
+      {status === 'completed' && (
+        <div className="flex items-center gap-2 text-green-600">
+          <CheckCircle className="h-4 w-4" />
+          <span>Processing complete</span>
+        </div>
+      )}
+      {status === 'failed' && (
+        <div className="flex items-center gap-2 text-red-600">
+          <XCircle className="h-4 w-4" />
+          <span>Processing failed</span>
+        </div>
+      )}
+    </div>
   )
 } 
