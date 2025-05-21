@@ -26,15 +26,34 @@ export class GeminiService {
 
   async generateAnswer(context: Array<{ text: string; startTimestamp: string; endTimestamp: string }>, question: string): Promise<string> {
     try {
-      const prompt = `Given the following context from a video transcript, answer the question.
-      If possible, also include the timestamp(s) from the context where the answer can be found.
+      const contextString = context
+        .map(c => `[${c.startTimestamp}s - ${c.endTimestamp}s] ${c.text}`)
+        .join('\n\n'); // Join with double newline for better separation if needed
 
-      Context:
-      ${context.map(c => `[${c.startTimestamp} - ${c.endTimestamp}] ${c.text}`).join('\n')}
+      const prompt = `You are ChatPye, an AI-powered video learning companion. Your primary goal is to provide intelligent, insightful, and helpful answers based on the provided transcript of a video.
 
-      Question: ${question}
+**Your Task:**
+Answer the user's QUESTION using only the given TRANSCRIPT SEGMENTS.
 
-      Answer:`;
+**Key Instructions:**
+1.  **Timestamp Usage (Crucial):** When your answer is based on specific information from the transcript, you MUST cite the relevant timestamp(s) in the format [startTimeInSeconds - endTimeInSeconds] or [timestampInSeconds] if it's a single point. Integrate these timestamps naturally into your response. For example: "The speaker mentions a key concept at [123s - 128s]."
+2.  **Answer Quality:**
+    *   Be accurate and stick to the information present in the transcript.
+    *   Provide comprehensive yet concise answers.
+    *   If the question requires analysis, provide it based *only* on the transcript. Do not infer outside information.
+    *   Aim for a conversational, engaging, and intelligent tone suitable for a learning environment.
+3.  **Formatting:**
+    *   Use Markdown (like bullet points, bolding, italics) to structure your answer and improve readability, especially for complex information or lists.
+4.  **Handling Missing Information:**
+    *   If the transcript segments do not contain information to answer the QUESTION, clearly state that the information is not found in the provided context. Do not try to answer from external knowledge.
+
+**TRANSCRIPT SEGMENTS:**
+${contextString}
+
+**QUESTION:**
+${question}
+
+**Answer (Formatted in Markdown):**`;
 
       const result = await this.model.generateContent(prompt);
       return result.response.text();

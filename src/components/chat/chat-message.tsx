@@ -1,8 +1,12 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react" // Added useState
 import { cn } from "@/lib/utils"
-import { MessageSquare, User } from "lucide-react"
+import { MessageSquare, User, Copy, Check } from "lucide-react" // Added Copy, Check
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter/dist/esm/styles/prism'; // Using ESM for Next.js
+import { Button } from "@/components/ui/button"; // Added Button
+import { useToast } from "@/components/ui/use-toast"; // Added useToast
 
 interface Message {
   id: string
@@ -51,10 +55,66 @@ export function ChatMessage({ message }: ChatMessageProps) {
               : "bg-muted"
           )}
         >
-          {message.content}
+          {message.isUser ? (
+            message.content
+          ) : (
+            <ReactMarkdown
+              components={{
+                code({ node, inline, className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  const codeString = String(children).replace(/\n$/, '');
+                  const [copied, setCopied] = useState(false);
+                  const { toast } = useToast();
+
+                  const handleCopy = () => {
+                    navigator.clipboard.writeText(codeString).then(() => {
+                      setCopied(true);
+                      toast({ title: "Copied!", description: "Code copied to clipboard." });
+                      setTimeout(() => setCopied(false), 2000);
+                    }).catch(err => {
+                      toast({ variant: "destructive", title: "Copy failed", description: "Could not copy code to clipboard." });
+                      console.error('Failed to copy code: ', err);
+                    });
+                  };
+
+                  return !inline && match ? (
+                    <div className="relative group">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={handleCopy}
+                        aria-label="Copy code"
+                      >
+                        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                      <SyntaxHighlighter
+                        style={Prism}
+                        language={match[1]}
+                        PreTag="div"
+                        className="rounded-md" // Added for better visual container
+                        {...props}
+                      >
+                        {codeString}
+                      </SyntaxHighlighter>
+                    </div>
+                  ) : (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  );
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">
-          {new Date(message.timestamp).toLocaleTimeString()}
+          {/* Ensure timestamp is valid before creating Date object */}
+          {message.timestamp && !isNaN(new Date(message.timestamp).getTime()) 
+            ? new Date(message.timestamp).toLocaleTimeString() 
+            : new Date().toLocaleTimeString()} 
         </span>
       </div>
     </div>
