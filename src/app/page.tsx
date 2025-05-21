@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { v4 as uuidv4 } from 'uuid';
 import { VideoPlayer } from "@/components/video/video-player"
 import { VideoInfo } from "@/components/video/video-info"
 import { ChatTabs } from "@/components/chat/chat-tabs"
@@ -61,6 +62,7 @@ export default function Home() {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null)
   const { toast } = useToast()
   const [selectedModel, setSelectedModel] = useState(models[0])
+  const [isAiResponding, setIsAiResponding] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Poll for job status
@@ -174,30 +176,85 @@ export default function Home() {
     }
   }
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return
+  const handleSendMessage = async () => {
+    if (!inputValue.trim()) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      content: inputValue,
-      isUser: true,
-      timestamp: new Date().toLocaleTimeString(),
+    if (!jobId) {
+      toast({
+        variant: "destructive",
+        title: "Video Not Processed",
+        description: "Please process a video before sending messages.",
+      });
+      return;
     }
 
-    setMessages((prev) => [...prev, newMessage])
-    setInputValue("")
+    const userInputValue = inputValue;
+    const newMessage: Message = {
+      id: uuidv4(),
+      content: userInputValue,
+      isUser: true,
+      timestamp: new Date().toLocaleTimeString(),
+    };
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "This is a placeholder AI response. The actual AI integration will be implemented soon.",
+    setMessages((prev) => [...prev, newMessage]);
+    setInputValue("");
+    setIsAiResponding(true);
+
+    // Optional: Add a temporary "AI is thinking..." message
+    const thinkingMessageId = uuidv4();
+    const thinkingMessage: Message = {
+      id: thinkingMessageId,
+      content: "AI is thinking...",
+      isUser: false,
+      timestamp: new Date().toLocaleTimeString(),
+    };
+    setMessages((prev) => [...prev, thinkingMessage]);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userInputValue,
+          jobId: jobId,
+          modelId: selectedModel.id,
+        }),
+      });
+
+      // Remove the "AI is thinking..." message
+      setMessages((prev) => prev.filter(msg => msg.id !== thinkingMessageId));
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to parse error response" }));
+        throw new Error(errorData.error || `API Error: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+
+      const aiResponseMessage: Message = {
+        id: uuidv4(),
+        content: responseData.message,
         isUser: false,
         timestamp: new Date().toLocaleTimeString(),
-      }
-      setMessages((prev) => [...prev, aiResponse])
-    }, 1000)
-  }
+      };
+      setMessages((prev) => [...prev, aiResponseMessage]);
+
+    } catch (error) {
+      // Ensure "AI is thinking..." message is removed on error too
+      setMessages((prev) => prev.filter(msg => msg.id !== thinkingMessageId));
+      
+      console.error("Failed to send message:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to get response from AI.",
+      });
+    } finally {
+      setIsAiResponding(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-background">

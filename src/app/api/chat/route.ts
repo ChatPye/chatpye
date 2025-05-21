@@ -1,20 +1,27 @@
 import { NextResponse } from "next/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
 import { getTranscriptChunks } from "@/lib/mongodb"
 import { findRelevantChunks } from "@/lib/embeddings"
-
-// Initialize Google AI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY || '')
+import { openAIService } from '@/lib/openai';
+import { anthropicService } from '@/lib/anthropic';
+import { geminiService } from '@/lib/gemini';
 
 export async function POST(request: Request) {
   try {
-    const { message, jobId } = await request.json()
+    const { message, jobId, modelId } = await request.json()
 
-    if (!message || !jobId) {
+    if (!message || !jobId || !modelId) {
       return NextResponse.json(
-        { error: "Message and jobId are required" },
+        { error: "Message, jobId, and modelId are required" },
         { status: 400 }
       )
+    }
+
+    const supportedModels = ["gemini", "openai", "anthropic"];
+    if (!supportedModels.includes(modelId)) {
+      return NextResponse.json(
+        { error: `Invalid modelId. Supported models are: ${supportedModels.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     // Get all transcript chunks for the video
@@ -30,29 +37,23 @@ export async function POST(request: Request) {
     // Find relevant chunks using semantic search
     const relevantChunks = await findRelevantChunks(message, chunks)
 
-    // Prepare context from relevant chunks
-    const context = relevantChunks.map(chunk => 
-      `[${chunk.startTimestamp}s - ${chunk.endTimestamp}s] ${chunk.textContent}`
-    ).join('\n')
+    // Prepare context for the services
+    const serviceContext = relevantChunks.map(chunk => ({
+      text: chunk.textContent,
+      startTimestamp: String(chunk.startTimestamp),
+      endTimestamp: String(chunk.endTimestamp)
+    }));
 
-    // Initialize Gemini model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" })
+    let text = "";
 
-    // Create prompt with context and user question
-    const prompt = `You are a helpful assistant that answers questions about a video based on its transcript. 
-    Use the following transcript segments to answer the question. Include relevant timestamps in your response.
-    
-    Transcript segments:
-    ${context}
-    
-    Question: ${message}
-    
-    Please provide a clear and concise answer, referencing specific timestamps when relevant.`
-
-    // Generate response
-    const result = await model.generateContent(prompt)
-    const response = await result.response
-    const text = response.text()
+    if (modelId === "gemini") {
+      text = await geminiService.generateAnswer(serviceContext, message);
+    } else if (modelId === "openai") {
+      text = await openAIService.generateAnswer(serviceContext, message);
+    } else if (modelId === "anthropic") {
+      text = await anthropicService.generateAnswer(serviceContext, message);
+    }
+    // No need for a default case here for unknown modelId because it's handled by the `supportedModels.includes` check earlier.
 
     return NextResponse.json({ message: text })
   } catch (error) {
