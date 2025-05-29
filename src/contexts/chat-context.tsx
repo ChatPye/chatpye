@@ -6,7 +6,8 @@ interface Message {
   id: string
   content: string
   isUser: boolean
-  timestamp: string
+  timestamp?: string
+  fromCache?: boolean
 }
 
 interface ChatContextType {

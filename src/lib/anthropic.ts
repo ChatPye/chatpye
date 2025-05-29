@@ -1,30 +1,36 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-// Define the structure for context items
+// Define the structure for context items, ensuring consistency
 interface TranscriptChunk {
   text: string;
-  startTimestamp: string;
-  endTimestamp: string;
+  startTimestamp: string; // Assuming these are string representations of seconds
+  endTimestamp: string;   // Assuming these are string representations of seconds
 }
 
+// Environment variable check
 if (!process.env.ANTHROPIC_API_KEY) {
-  throw new Error("ANTHROPIC_API_KEY environment variable is not set.");
+  console.warn('Warning: ANTHROPIC_API_KEY environment variable is not set. AnthropicService will fail if instantiated and used.');
 }
 
 export class AnthropicService {
   private anthropic: Anthropic;
   private model: string;
 
-  constructor(model: string = "claude-3-opus-20240229") {
+  constructor(model: string = "claude-3-opus-20240229") { // Default model, can be overridden
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('CRITICAL: AnthropicService cannot be instantiated without ANTHROPIC_API_KEY.');
+    }
     this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     this.model = model;
   }
 
   public async generateAnswer(context: Array<TranscriptChunk>, question: string): Promise<string> {
+    console.log("Anthropic: Generating answer for question:", question.substring(0,50)+"...");
     const contextString = context
       .map(c => `[${c.startTimestamp}s - ${c.endTimestamp}s] ${c.text}`)
-      .join('\n\n'); // Join with double newline for better separation
+      .join('\n\n'); // Using double newline for better separation
 
+    // Construct the prompt for Anthropic, ensuring it follows the Human/Assistant turn structure
     const prompt = `You are ChatPye, an AI-powered video learning companion. Your primary goal is to provide intelligent, insightful, and helpful answers based on the provided transcript of a video.
 
 **Your Task:**
@@ -47,28 +53,38 @@ ${contextString}
 
 Human: ${question}
 
-Assistant:`; // The model will start its response here.
+Assistant:`; // The model will generate content starting from here
 
     try {
+      // console.log("Anthropic: Calling messages.create."); // Debug
       const completion = await this.anthropic.messages.create({
         model: this.model,
-        max_tokens: 1024, // Adjust as needed
+        max_tokens: 2048, // Increased max_tokens for potentially longer, well-formatted answers
         messages: [
           { role: "user", content: prompt }
+          // Anthropic's new Messages API typically uses a list of messages.
+          // The entire prompt including system instructions and the "Human: ..." turn
+          // can be placed within a single user message like this.
         ]
       });
 
-      // Ensure there is content and it's in the expected format
+      // console.log("Anthropic: Response received."); // Debug
+
+      // Ensure there is content and it's in the expected text format
       if (completion.content && completion.content.length > 0 && completion.content[0].type === "text") {
         return completion.content[0].text.trim();
       } else {
+        console.error("Anthropic API returned no text response or unexpected format:", completion);
         throw new Error("No text response or unexpected format from Anthropic API.");
       }
-    } catch (error) {
-      console.error("Error generating answer from Anthropic:", error);
-      throw new Error("Failed to generate answer from Anthropic.");
+    } catch (error: any) {
+      console.error("Error generating answer from Anthropic:", JSON.stringify(error, null, 2));
+      throw new Error(`Failed to generate answer from Anthropic: ${error.message || 'Unknown error'}`);
     }
   }
 }
 
-export const anthropicService = new AnthropicService();
+// Create a singleton instance
+export const anthropicService = new AnthropicService(); // Uses default "claude-3-opus-20240229"
+// If you prefer another model like claude-3-sonnet-20240229 or claude-3-haiku-20240307 for different cost/speed:
+// export const anthropicService = new AnthropicService("claude-3-sonnet-20240229");

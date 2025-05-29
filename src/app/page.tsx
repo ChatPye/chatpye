@@ -10,8 +10,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { useToast } from "@/components/ui/use-toast"
 import { extractVideoId, isValidYouTubeUrl } from "@/lib/youtube"
 import { Button } from "@/components/ui/button"
-import { Settings, Youtube, LogIn, UserPlus, Send, MessageSquare, Clock, Copy, FileText, ChevronDown } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Settings, Youtube, LogIn, UserPlus, LogOut } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -20,21 +19,37 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { VideoStatus } from "@/components/video/video-status"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+
+// Firebase Imports
+import { auth, googleProvider } from "@/lib/firebaseClient"
+import { 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut as firebaseSignOut,
+  signInWithPopup,
+  User 
+} from "firebase/auth"
 
 interface Message {
   id: string
   content: string
   isUser: boolean
   timestamp?: string
+  fromCache?: boolean
 }
 
 interface VideoInfo {
   id: string
-  title: string
-  description: string
-  views: string
-  publishedAt: string
-  url: string
+  title?: string
 }
 
 const examplePrompts = [
@@ -45,8 +60,8 @@ const examplePrompts = [
 
 const models = [
   { id: "gemini", name: "Gemini", description: "Google's latest AI model" },
-  { id: "gpt4", name: "GPT-4", description: "OpenAI's most advanced model" },
-  { id: "gpt35", name: "GPT-3.5", description: "Fast and efficient" },
+  { id: "openai", name: "GPT-4", description: "OpenAI's most advanced model" },
+  { id: "anthropic", name: "Claude", description: "Anthropic's model" },
 ]
 
 export default function Home() {
@@ -65,6 +80,21 @@ export default function Home() {
   const [isAiResponding, setIsAiResponding] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
+  // Firebase Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authEmail, setAuthEmail] = useState("")
+  const [authPassword, setAuthPassword] = useState("")
+
+  // Auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user)
+      setAuthLoading(false)
+    });
+    return () => unsubscribe();
+  }, [])
+
   // Poll for job status
   useEffect(() => {
     if (!jobId || processingStatus === 'completed' || processingStatus === 'failed') return
@@ -78,23 +108,23 @@ export default function Home() {
         
         if (data.status === 'completed') {
           setProcessingStatus('completed')
-          setProcessingMessage('Video processed and ready for chat')
+          setProcessingMessage('Video processed and ready for chat.')
           clearInterval(pollInterval)
         } else if (data.status === 'failed') {
           setProcessingStatus('failed')
-          setProcessingMessage('Failed to process video')
+          setProcessingMessage('Failed to process video.')
           clearInterval(pollInterval)
         } else {
           setProcessingStatus('processing')
-          setProcessingMessage('Processing video transcript...')
+          setProcessingMessage(data.progress || 'Processing video transcript...')
         }
       } catch (error) {
         console.error('Error polling status:', error)
         setProcessingStatus('failed')
-        setProcessingMessage('Error checking processing status')
+        setProcessingMessage('Error checking processing status.')
         clearInterval(pollInterval)
       }
-    }, 2000)
+    }, 3000)
 
     return () => clearInterval(pollInterval)
   }, [jobId, processingStatus])
@@ -102,75 +132,61 @@ export default function Home() {
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isValidYouTubeUrl(url)) {
-      toast({
-        variant: "destructive",
-        title: "Invalid URL",
-        description: "Please enter a valid YouTube URL",
-      })
+      toast({ variant: "destructive", title: "Invalid URL", description: "Please enter a valid YouTube URL" })
       return
     }
 
     const id = extractVideoId(url)
     if (!id) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Could not extract video ID from URL",
-      })
+      toast({ variant: "destructive", title: "Error", description: "Could not extract video ID from URL" })
       return
     }
 
     setIsLoading(true)
     setVideoId(id)
+    setMessages([])
     setProcessingStatus('processing')
     setProcessingMessage("Starting video processing...")
+    setJobId(null)
+    setVideoInfo({ id })
 
     try {
-      // Start video processing
+      // Fetch video info first
+      const infoResponse = await fetch('/api/video-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ youtubeUrl: url }),
+      });
+      
+      if (infoResponse.ok) {
+        const infoData = await infoResponse.json();
+        setVideoInfo(prev => ({...prev, ...infoData}));
+      } else {
+        console.warn("Could not fetch video info:", await infoResponse.text());
+      }
+
+      // Then start processing
       const processResponse = await fetch('/api/video/process', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ youtubeUrl: url }),
       })
 
       if (!processResponse.ok) {
-        throw new Error('Failed to start video processing')
+        const errorData = await processResponse.json().catch(() => ({message: "Failed to start video processing"}));
+        throw new Error(errorData.error || "Processing request failed");
       }
 
       const processData = await processResponse.json()
       setJobId(processData.jobId)
-
-      // Fetch video info
-      const infoResponse = await fetch('/api/video-info', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ youtubeUrl: url }),
-      })
-
-      if (!infoResponse.ok) {
-        throw new Error('Failed to fetch video info')
-      }
-
-      const infoData = await infoResponse.json()
-      setVideoInfo(infoData)
+      setProcessingMessage(processData.message || "Video processing started. Waiting for updates...");
       
-      toast({
-        title: "Success",
-        description: "Video processing started",
-      })
-    } catch (error) {
-      console.error('Error:', error)
+      toast({ title: "Processing Started", description: "Video processing initiated. You can start chatting once it's ready." })
+    } catch (error: any) {
+      console.error('Error submitting URL:', error)
       setProcessingStatus('failed')
-      setProcessingMessage('Failed to process video')
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to process video. Please try again.",
-      })
+      setProcessingMessage(error.message || 'Failed to process video. Please try again.')
+      toast({ variant: "destructive", title: "Error", description: error.message || "Failed to process video." })
     } finally {
       setIsLoading(false)
     }
@@ -178,29 +194,27 @@ export default function Home() {
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
-
-    if (!jobId) {
-      toast({
-        variant: "destructive",
-        title: "Video Not Processed",
-        description: "Please process a video before sending messages.",
-      });
-      return;
+    if (!jobId && selectedModel.id !== 'gemini') {
+        toast({ variant: "destructive", title: "Video Not Ready", description: "Please wait for video processing to complete or select a processed video." });
+        return;
+    }
+    if (!jobId && selectedModel.id === 'gemini' && !videoId) {
+        toast({ variant: "destructive", title: "No Video", description: "Please submit a YouTube URL first to chat with Gemini." });
+        return;
     }
 
-    const userInputValue = inputValue;
-    const newMessage: Message = {
+    const userMessageContent = inputValue;
+    const userMessage: Message = {
       id: uuidv4(),
-      content: userInputValue,
+      content: userMessageContent,
       isUser: true,
       timestamp: new Date().toLocaleTimeString(),
     };
 
-    setMessages((prev) => [...prev, newMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
     setIsAiResponding(true);
 
-    // Optional: Add a temporary "AI is thinking..." message
     const thinkingMessageId = uuidv4();
     const thinkingMessage: Message = {
       id: thinkingMessageId,
@@ -208,53 +222,195 @@ export default function Home() {
       isUser: false,
       timestamp: new Date().toLocaleTimeString(),
     };
-    setMessages((prev) => [...prev, thinkingMessage]);
+    setMessages(prev => [...prev, thinkingMessage]);
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: userInputValue,
-          jobId: jobId,
-          modelId: selectedModel.id,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            message: userMessageContent, 
+            jobId: jobId,
+            modelId: selectedModel.id,
+            videoId: videoId
+         }),
       });
-
-      // Remove the "AI is thinking..." message
-      setMessages((prev) => prev.filter(msg => msg.id !== thinkingMessageId));
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Failed to parse error response" }));
-        throw new Error(errorData.error || `API Error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({ errorMessage: "An unexpected API error occurred." }));
+        throw new Error(errorData.errorMessage || "API request failed");
+      }
+      
+      setMessages(prev => prev.filter(m => m.id !== thinkingMessageId));
+
+      const contentType = response.headers.get("content-type");
+      let isJsonCachedResponse = false;
+      let responseData = null;
+
+      if (contentType && contentType.includes("application/json")) {
+        responseData = await response.json();
+        if (responseData.fromCache === true || responseData.stream === false) {
+          isJsonCachedResponse = true;
+        } else if (selectedModel.id !== 'gemini') {
+          isJsonCachedResponse = true; 
+        } else if (responseData.error) {
+            throw new Error(responseData.error);
+        } else {
+          console.warn("Received unexpected JSON for Gemini, expected stream or cached response.", responseData);
+          throw new Error("Unexpected response type for Gemini.");
+        }
       }
 
-      const responseData = await response.json();
+      if (isJsonCachedResponse && responseData) {
+        const aiMessage: Message = {
+          id: uuidv4(),
+          content: responseData.message,
+          isUser: false,
+          timestamp: new Date().toLocaleTimeString(),
+          fromCache: responseData.fromCache
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else if (selectedModel.id === 'gemini' && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const currentAiMessageId = uuidv4();
 
-      const aiResponseMessage: Message = {
-        id: uuidv4(),
-        content: responseData.message,
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setMessages((prev) => [...prev, aiResponseMessage]);
+        setMessages(prev => [...prev, { 
+            id: currentAiMessageId, 
+            content: "", 
+            isUser: false, 
+            timestamp: new Date().toLocaleTimeString() 
+        }]);
+        
+        let streamEnded = false;
+        try {
+            while (!streamEnded) {
+              const { value, done } = await reader.read();
+              if (done) {
+                streamEnded = true;
+                break;
+              }
+              const decodedChunk = decoder.decode(value, { stream: true });
+              setMessages(prevMessages =>
+                prevMessages.map(msg =>
+                  msg.id === currentAiMessageId ? { ...msg, content: msg.content + decodedChunk } : msg
+                )
+              );
+            }
+        } catch (streamError: any) {
+            console.error("Error reading stream:", streamError);
+            toast({ variant: "destructive", title: "Stream Error", description: "Error reading AI response." });
+            setMessages(prev => prev.filter(m => m.id !== currentAiMessageId));
+        } finally {
+            if (!streamEnded) reader.releaseLock();
+        }
+      } else {
+        console.error("Unhandled response type or missing body for Gemini stream.");
+        throw new Error("Failed to process AI response correctly.");
+      }
 
-    } catch (error) {
-      // Ensure "AI is thinking..." message is removed on error too
-      setMessages((prev) => prev.filter(msg => msg.id !== thinkingMessageId));
-      
-      console.error("Failed to send message:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to get response from AI.",
-      });
+    } catch (error: any) {
+      console.error('Error sending message or processing response:', error);
+      toast({ variant: "destructive", title: "Error", description: error.message || "Failed to get response from AI." });
+      setMessages(prev => prev.filter(m => m.id !== thinkingMessageId));
     } finally {
       setIsAiResponding(false);
     }
   };
+
+  // Firebase Auth Handlers
+  const handleGoogleSignIn = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      toast({ title: "Success", description: "Signed in with Google successfully!" });
+    } catch (error: any) {
+      console.error("Google Sign In Error:", error);
+      let errorMessage = "Failed to sign in with Google";
+      if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = "Sign in was cancelled. Please try again.";
+      } else if (error.code === 'auth/popup-blocked') {
+        errorMessage = "Pop-up was blocked. Please allow pop-ups for this site.";
+      }
+      toast({ 
+        variant: "destructive", 
+        title: "Sign In Error", 
+        description: errorMessage 
+      });
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!authEmail || !authPassword) {
+      toast({ 
+        variant: "destructive", 
+        title: "Missing Information", 
+        description: "Please enter both email and password" 
+      });
+      return;
+    }
+
+    try {
+      await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      toast({ title: "Success", description: "Account created successfully!" });
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (error: any) {
+      console.error("Sign Up Error:", error);
+      let errorMessage = "Failed to create account";
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = "This email is already registered. Please sign in instead.";
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = "Password should be at least 6 characters long.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "Please enter a valid email address.";
+      }
+      toast({ variant: "destructive", title: "Sign Up Error", description: errorMessage });
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!authEmail || !authPassword) {
+      toast({ 
+        variant: "destructive", 
+        title: "Missing Information", 
+        description: "Please enter both email and password" 
+      });
+      return;
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      toast({ title: "Success", description: "Signed in successfully!" });
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (error: any) {
+      console.error("Sign In Error:", error);
+      let errorMessage = "Failed to sign in";
+      if (error.code === 'auth/invalid-credential') {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email. Please sign up first.";
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = "Incorrect password. Please try again.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "Please enter a valid email address.";
+      }
+      toast({ variant: "destructive", title: "Sign In Error", description: errorMessage });
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await firebaseSignOut(auth);
+      toast({ title: "Success", description: "Signed out successfully!" });
+    } catch (error: any) {
+      console.error("Sign Out Error:", error);
+      toast({ variant: "destructive", title: "Sign Out Error", description: "Failed to sign out" });
+    }
+  };
+
+  const [isSignInOpen, setIsSignInOpen] = useState(false)
+  const [isSignUpOpen, setIsSignUpOpen] = useState(false)
 
   return (
     <main className="min-h-screen bg-background">
@@ -266,18 +422,121 @@ export default function Home() {
               <Youtube className="h-8 w-8 text-black" />
               <span className="ml-2 text-xl font-bold text-black">ChatPye</span>
             </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" className="flex items-center text-black hover:text-gray-700">
-                <LogIn className="h-4 w-4 mr-2" />
-                Sign In
-              </Button>
-              <Button variant="outline" size="sm" className="flex items-center border-black text-black hover:bg-gray-50">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Sign Up
-              </Button>
-              <Button variant="ghost" size="icon" className="text-black">
-                <Settings className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center space-x-2">
+              {authLoading ? (
+                <p className="text-sm text-gray-600">Loading auth...</p>
+              ) : currentUser ? (
+                <>
+                  <p className="text-sm text-gray-700 hidden sm:block">Welcome, {currentUser.displayName || currentUser.email}</p>
+                  <Button variant="outline" size="sm" onClick={handleSignOut} className="flex items-center">
+                    <LogOut className="h-4 w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign Out</span>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Dialog open={isSignInOpen} onOpenChange={setIsSignInOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="flex items-center text-black hover:text-gray-700">
+                        <LogIn className="h-4 w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign In</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Sign In</DialogTitle>
+                        <DialogDescription>
+                          Enter your email and password to sign in to your account.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                          <label htmlFor="email" className="text-sm font-medium">Email</label>
+                          <Input
+                            id="email"
+                            type="email"
+                            placeholder="Enter your email"
+                            value={authEmail}
+                            onChange={(e) => setAuthEmail(e.target.value)}
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <label htmlFor="password" className="text-sm font-medium">Password</label>
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="Enter your password"
+                            value={authPassword}
+                            onChange={(e) => setAuthPassword(e.target.value)}
+                          />
+                        </div>
+                        <Button onClick={handleSignIn} className="w-full">Sign In</Button>
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                          </div>
+                        </div>
+                        <Button variant="outline" onClick={handleGoogleSignIn} className="w-full">
+                          <img src="/google.svg" alt="Google" className="h-4 w-4 mr-2" />
+                          Sign in with Google
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog open={isSignUpOpen} onOpenChange={setIsSignUpOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="flex items-center border-black text-black hover:bg-gray-50">
+                        <UserPlus className="h-4 w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign Up</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Create an Account</DialogTitle>
+                        <DialogDescription>
+                          Enter your email and password to create a new account.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                          <label htmlFor="signup-email" className="text-sm font-medium">Email</label>
+                          <Input
+                            id="signup-email"
+                            type="email"
+                            placeholder="Enter your email"
+                            value={authEmail}
+                            onChange={(e) => setAuthEmail(e.target.value)}
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <label htmlFor="signup-password" className="text-sm font-medium">Password</label>
+                          <Input
+                            id="signup-password"
+                            type="password"
+                            placeholder="Create a password"
+                            value={authPassword}
+                            onChange={(e) => setAuthPassword(e.target.value)}
+                          />
+                        </div>
+                        <Button onClick={handleSignUp} className="w-full">Create Account</Button>
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                          </div>
+                        </div>
+                        <Button variant="outline" onClick={handleGoogleSignIn} className="w-full">
+                          <img src="/google.svg" alt="Google" className="h-4 w-4 mr-2" />
+                          Sign up with Google
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -293,8 +552,9 @@ export default function Home() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="flex-1"
+              aria-label="YouTube URL Input"
             />
-            <Button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto">
+            <Button type="submit" disabled={isLoading || authLoading} className="bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto">
               {isLoading ? "Loading..." : "Start Learning"}
             </Button>
           </form>
@@ -306,7 +566,6 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column - Video Section and Info */}
           <div className="lg:col-span-8 space-y-6 order-1">
-            {/* Video Player */}
             <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
               <div className="w-full">
                 {videoId ? (
@@ -314,26 +573,26 @@ export default function Home() {
                     <VideoPlayer videoId={videoId} />
                   </div>
                 ) : (
-                  <div className="w-full aspect-video bg-black relative flex flex-col items-center justify-center p-4 text-center">
-                    <h2 className="text-[18px] sm:text-[20px] font-medium text-black mb-2">Welcome to ChatPye</h2>
-                    <p className="text-[14px] sm:text-[16px] text-[#666666]">Your AI-powered video learning companion</p>
+                  <div className="w-full aspect-video bg-black/90 relative flex flex-col items-center justify-center p-4 text-center">
+                    <Youtube className="h-16 w-16 text-gray-400 mb-4" />
+                    <h2 className="text-lg sm:text-xl font-medium text-white mb-2">Welcome to ChatPye</h2>
+                    <p className="text-sm sm:text-base text-gray-300">Your AI-powered video learning companion. Paste a YouTube URL above to begin.</p>
                   </div>
                 )}
               </div>
             </Card>
 
-            {/* Video Info */}
-            {videoId && (
-              <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
-                <VideoInfo videoId={videoId} />
+            {/* Video Info - Title can be shown here */}
+            {videoInfo?.title && videoId && (
+              <Card className="rounded-xl p-4 bg-white shadow-sm border border-slate-100">
+                <h2 className="text-lg font-semibold text-gray-800">{videoInfo.title}</h2>
               </Card>
             )}
           </div>
 
           {/* Right Column - Chat */}
           <div className="lg:col-span-4 order-2">
-            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100 h-[calc(100vh-12rem)]">
-              {/* Video Status */}
+            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100 h-[calc(100vh-12rem)] flex flex-col">
               {processingStatus !== 'idle' && (
                 <div className="border-b border-slate-100">
                   <VideoStatus 
@@ -342,26 +601,29 @@ export default function Home() {
                   />
                 </div>
               )}
-              <ChatTabs jobId={jobId} disabled={!jobId} />
-            </Card>
-          </div>
-
-          {/* Recommended Videos - Full width on mobile, left column on desktop */}
-          <div className="lg:col-span-8 order-3">
-            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
-              <div className="p-6">
-                <h3 className="text-lg font-medium text-[#1a1a1a] mb-4">Recommended Videos</h3>
-                <div className="space-y-4">
-                  {/* Placeholder for recommended videos */}
-                  <div className="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <div className="w-40 h-24 bg-gray-200 rounded-lg"></div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-[#1a1a1a] mb-1">Loading recommendations...</h4>
-                      <p className="text-sm text-[#666666]">Coming soon</p>
-                    </div>
-                  </div>
-                </div>
+              <div className="p-2 border-b">
+                 <label htmlFor="model-select" className="block text-sm font-medium text-gray-700 mb-1">Select AI Model:</label>
+                 <select 
+                    id="model-select"
+                    value={selectedModel.id}
+                    onChange={(e) => setSelectedModel(models.find(m => m.id === e.target.value) || models[0])}
+                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                    disabled={isAiResponding}
+                 >
+                    {models.map(model => (
+                        <option key={model.id} value={model.id}>{model.name} - {model.description}</option>
+                    ))}
+                 </select>
               </div>
+              <ChatTabs 
+                jobId={jobId} 
+                disabled={!jobId && selectedModel.id !== 'gemini'}
+                messages={messages}
+                inputValue={inputValue}
+                onInputChange={setInputValue}
+                onSendMessage={handleSendMessage}
+                isLoading={isAiResponding} 
+              />
             </Card>
           </div>
         </div>

@@ -14,20 +14,31 @@ interface Message {
   id: string
   content: string
   isUser: boolean
-  timestamp: string
+  timestamp?: string
+  fromCache?: boolean
 }
 
 interface ChatTabsProps {
   jobId: string | null
   disabled?: boolean
+  messages: Message[]
+  inputValue: string
+  onInputChange: (value: string) => void
+  onSendMessage: () => Promise<void>
+  isLoading: boolean
 }
 
-export function ChatTabs({ jobId, disabled }: ChatTabsProps) {
+export function ChatTabs({ 
+  jobId, 
+  disabled,
+  messages,
+  inputValue,
+  onInputChange,
+  onSendMessage,
+  isLoading
+}: ChatTabsProps) {
   const {
-    messages,
     setMessages,
-    inputValue,
-    setInputValue,
     isProcessing,
     processingStatus
   } = useChat()
@@ -91,7 +102,7 @@ export function ChatTabs({ jobId, disabled }: ChatTabsProps) {
     }
 
     setMessages([...messages, newMessage])
-    setInputValue("")
+    onInputChange("")
 
     // Check if input is a YouTube URL
     if (isValidYouTubeUrl(inputValue)) {
@@ -127,25 +138,7 @@ export function ChatTabs({ jobId, disabled }: ChatTabsProps) {
 
     // Handle regular Q&A
     try {
-      const response = await fetch('/api/video/qa', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jobId: currentJobId,
-          question: inputValue
-        }),
-      });
-
-      const { answer } = await response.json();
-      
-      setMessages((prev: Message[]) => [...prev, {
-        id: Date.now().toString(),
-        content: answer,
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString()
-      }]);
+      await onSendMessage();
     } catch (error) {
       console.error('Error getting answer:', error);
       setMessages((prev: Message[]) => [...prev, {
