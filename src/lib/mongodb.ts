@@ -36,7 +36,8 @@ export interface VideoJob {
   jobId: string;
   youtubeUrl: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  transcriptStatus: 'found' | 'not_found' | 'processing';
+  transcriptStatus: 'found' | 'not_found' | 'processing' | 'error';
+  progress: string;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
@@ -16,7 +16,55 @@ export function YouTubeUrlProcessor({
   disabled = false
 }: YouTubeUrlProcessorProps) {
   const [url, setUrl] = useState("")
+  const [jobId, setJobId] = useState<string | null>(null)
   const { toast } = useToast()
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (jobId) {
+      intervalId = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/video/status/${jobId}`);
+          if (!response.ok) {
+            throw new Error('Failed to fetch job status');
+          }
+
+          const data = await response.json();
+          onProcessingStatus(data.progress || 'Processing...');
+
+          if (data.status === 'completed') {
+            clearInterval(intervalId);
+            setJobId(null);
+            const videoId = extractVideoId(url);
+            if (videoId) {
+              onVideoProcessed(videoId, data);
+            }
+            toast({
+              title: "Success",
+              description: "Video processed successfully",
+            });
+          } else if (data.status === 'failed') {
+            clearInterval(intervalId);
+            setJobId(null);
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: data.progress || "Failed to process video",
+            });
+          }
+        } catch (error) {
+          console.error('Error checking job status:', error);
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [jobId, url, onVideoProcessed, onProcessingStatus, toast]);
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,10 +87,10 @@ export function YouTubeUrlProcessor({
       return
     }
 
-    onProcessingStatus("Loading video...")
+    onProcessingStatus("Starting video processing...")
 
     try {
-      const response = await fetch('/api/video-info', {
+      const response = await fetch('/api/video/process', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -60,13 +108,8 @@ export function YouTubeUrlProcessor({
         throw new Error(data.details || data.error)
       }
 
-      onVideoProcessed(id, data)
+      setJobId(data.jobId)
       setUrl("")
-      
-      toast({
-        title: "Success",
-        description: "Video loaded successfully",
-      })
     } catch (error) {
       console.error('Error:', error)
       toast({
@@ -84,19 +127,19 @@ export function YouTubeUrlProcessor({
         placeholder="Paste YouTube URL"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        disabled={disabled}
+        disabled={disabled || jobId !== null}
         className="w-[400px]"
       />
       <Button
         type="submit"
-        disabled={disabled || !url.trim()}
+        disabled={disabled || !url.trim() || jobId !== null}
         className={`${
-          url.trim() 
+          url.trim() && jobId === null
             ? 'bg-indigo-600 hover:bg-indigo-700' 
             : 'bg-gray-300 cursor-not-allowed'
         } transition-colors`}
       >
-        Start Learning
+        {jobId ? 'Processing...' : 'Start Learning'}
       </Button>
     </form>
   )
