@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ChatProvider } from "@/contexts/chat-context"
+import { VideoPlayerProvider } from "@/contexts/video-player-context" // Import the new provider
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -18,8 +19,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <ChatProvider>{children}</ChatProvider>
+        <ChatProvider>
+          <VideoPlayerProvider>{children}</VideoPlayerProvider>
+        </ChatProvider>
       </body>
     </html>
   )
-} 
+}
