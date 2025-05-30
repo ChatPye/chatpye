@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button"; 
 import { Textarea } from "@/components/ui/textarea"; // Import Textarea
 import { MessageSquare, Clock, FileText, Bot, Loader2, AlertTriangle, PlayCircle, Edit3, Trash2, UserCircle } from "lucide-react"; 
-import { ChatContainer, Message, ProcessingStatus } from "./chat-container";
+import { ChatContainer } from "./chat-container";
 import { useVideoPlayer } from '@/contexts/video-player-context';
 
 // Define Chapter interface
@@ -31,30 +31,17 @@ interface Note {
 interface ChatTabsProps {
   jobId: string | null;
   videoId: string | null; 
-  currentUser: User | null; // Added currentUser prop
-  onSignInClick?: () => void; // Added onSignInClick prop
+  currentUser: User | null;
+  onSignInClick?: () => void;
   disabled?: boolean;
-  messages: Message[];
-  inputValue: string;
-  onInputChange: (value: string) => void;
-  onSendMessage: () => Promise<void>;
-  isLoading: boolean;
-  processingStatus: ProcessingStatus;
-  processingMessage?: string;
 }
 
 export function ChatTabs({ 
   jobId, 
   videoId, 
-  currentUser, // Destructure currentUser
-  onSignInClick, // Destructure onSignInClick
-  messages,
-  inputValue,
-  onInputChange,
-  onSendMessage,
-  isLoading,
-  processingStatus,
-  processingMessage 
+  currentUser,
+  onSignInClick,
+  disabled
 }: ChatTabsProps) {
   const [activeTab, setActiveTab] = useState("chat");
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -100,9 +87,9 @@ export function ChatTabs({
 
   return (
     <Card className="h-full flex flex-col">
-      <div className="p-3 sm:p-4 border-b bg-white sticky top-0 z-10"> {/* Reduced padding on mobile */}
-        <h2 className="text-lg sm:text-xl font-semibold text-indigo-600 mb-1 sm:mb-2">ChatPye</h2> {/* Adjusted font size & margin */}
-        <p className="text-xs sm:text-sm text-gray-500">Your AI-powered video learning companion</p> {/* Adjusted font size */}
+      <div className="p-2 border-b bg-white sticky top-0 z-10"> {/* Reduced from p-3 sm:p-4 */}
+        <h2 className="text-lg sm:text-xl font-semibold text-indigo-600 mb-1">ChatPye</h2>
+        <p className="text-xs sm:text-sm text-gray-500">Your AI-powered video learning companion</p>
       </div>
       <Tabs 
         defaultValue="chat" 
@@ -110,10 +97,9 @@ export function ChatTabs({
         onValueChange={setActiveTab} 
       >
         <TabsList className="w-full justify-start border-b rounded-none bg-white z-10 p-0">
-          {/* Adjusted padding, font size, and icon size for TabsTrigger */}
           <TabsTrigger 
             value="chat" 
-            className="px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1 sm:gap-2"
+            className="px-2 py-1 text-xs sm:px-2 sm:py-1.5 sm:text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1 sm:gap-2"
           >
             <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
             Chat
@@ -141,22 +127,12 @@ export function ChatTabs({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden">
-          <ChatContainer 
-            jobId={jobId}
-            messages={messages}
-            inputValue={inputValue}
-            onInputChange={onInputChange}
-            onSendMessage={onSendMessage}
-            isLoading={isLoading}
-            processingStatus={processingStatus}
-            processingMessage={processingMessage}
-            onExamplePromptClick={onInputChange} // Example: clicking prompt sets input
-          />
+          <ChatContainer />
         </TabsContent>
-        <TabsContent value="timeline" className="flex-1 flex flex-col m-0 p-2 sm:p-4 overflow-y-auto bg-slate-50"> {/* Adjusted padding */}
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-3 sm:mb-4">Video Chapters</h3> {/* Adjusted font size & margin */}
+        <TabsContent value="timeline" className="flex-1 flex flex-col m-0 p-1 sm:p-2 overflow-y-auto bg-slate-50">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-3 sm:mb-4">Video Chapters</h3>
           {isLoadingChapters && (
-            <div className="flex items-center justify-center text-xs sm:text-sm text-gray-500"> {/* Adjusted font size */}
+            <div className="flex items-center justify-center text-xs sm:text-sm text-gray-500">
               <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin mr-2" />
               Loading chapters...
             </div>
@@ -184,7 +160,7 @@ export function ChatTabs({
                     <PlayCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
                     Go to: {formatTime(chapter.startTime)}
                   </Button>
-                  <p className="text-xs sm:text-sm text-gray-700 leading-normal sm:leading-relaxed">{chapter.summary}</p> {/* Adjusted leading */}
+                  <p className="text-xs sm:text-sm text-gray-700 leading-normal sm:leading-relaxed">{chapter.summary}</p>
                 </Card>
               ))}
             </div>
@@ -219,7 +195,7 @@ export function ChatTabs({
                   onChange={(e) => setNoteInput(e.target.value)}
                   placeholder="Type your note here..."
                   className="w-full min-h-[70px] sm:min-h-[100px] mb-2 sm:mb-3 border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 text-sm sm:text-base"
-                  rows={3} /* Adjusted rows for mobile */
+                  rows={3}
                 />
                 <Button
                   onClick={() => {
@@ -265,7 +241,7 @@ export function ChatTabs({
                         <Card key={note.id} className="p-2.5 sm:p-3 bg-white shadow">
                           <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap break-words">{note.content}</p>
                           <div className="flex justify-between items-center mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-gray-200">
-                            <p className="text-[10px] sm:text-xs text-gray-500"> {/* Adjusted date font size */}
+                            <p className="text-[10px] sm:text-xs text-gray-500">
                               {new Date(note.createdAt).toLocaleDateString()} {new Date(note.createdAt).toLocaleTimeString()}
                             </p>
                             <Button 
