@@ -1,29 +1,29 @@
 "use client"
 
-import React, { useState, useEffect, useRef, ChangeEvent, KeyboardEvent } from "react"
+import React, { useEffect, useRef, ChangeEvent, KeyboardEvent } from "react"
 import { ChatMessage } from "./chat-message"
-import { ChatInput } from "./chat-input"
+// ChatInput is not used directly, Input and Button are used instead
+// import { ChatInput } from "./chat-input" 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SendHorizontal, Loader2 } from "lucide-react"
 import { VideoStatus } from "@/components/video/video-status"
-import { Card } from "@/components/ui/card"
+// Card is not used directly
+// import { Card } from "@/components/ui/card" 
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
-interface ChatContainerProps {
-  jobId?: string | null
-}
-
-interface Message {
+// Interface for messages, aligned with page.tsx and ChatTabs.tsx
+export interface Message {
   id: string
   content: string
   isUser: boolean
-  timestamp: string
+  timestamp?: string 
+  fromCache?: boolean
 }
 
-type ProcessingStatus = 'idle' | 'processing' | 'completed' | 'failed'
+export type ProcessingStatus = 'idle' | 'processing' | 'completed' | 'failed'
 
 const examplePrompts = [
   "Give me insights from this video",
@@ -31,118 +31,50 @@ const examplePrompts = [
   "What are the key takeaways from this video"
 ]
 
-export function ChatContainer({ jobId }: ChatContainerProps) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [inputValue, setInputValue] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('idle')
+interface ChatContainerProps {
+  jobId?: string | null // Retained for potential direct use if ever needed, but primary status via props
+  messages: Message[]
+  inputValue: string
+  onInputChange: (value: string) => void
+  onSendMessage: () => Promise<void> // This is the callback from parent (page.tsx via ChatTabs.tsx)
+  isLoading: boolean // True when AI is responding or an action is in progress
+  processingStatus: ProcessingStatus // Status of video processing
+  processingMessage?: string // Message related to video processing
+  onExamplePromptClick?: (prompt: string) => void // Handler for example prompts
+}
+
+export function ChatContainer({ 
+  // jobId, // Not directly used for fetching status anymore
+  messages,
+  inputValue,
+  onInputChange,
+  onSendMessage, // Renamed from handleSendMessage in props
+  isLoading,
+  processingStatus,
+  processingMessage,
+  onExamplePromptClick 
+}: ChatContainerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  useEffect(() => {
-    if (!jobId) return;
+  // Removed internal state for messages, inputValue, isLoading, processingStatus
+  // Removed useEffect for jobId based status polling
 
-    const checkStatus = async () => {
-      try {
-        const response = await fetch(`/api/video/status/${jobId}`);
-        if (!response.ok) throw new Error('Failed to fetch status');
-        
-        const data = await response.json();
-        setProcessingStatus(data.status as ProcessingStatus);
-      } catch (error) {
-        console.error('Error checking video status:', error);
-        setProcessingStatus('failed');
-      }
-    };
-
-    checkStatus();
-    const interval = setInterval(checkStatus, 5000);
-
-    return () => clearInterval(interval);
-  }, [jobId]);
-
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || !jobId || processingStatus !== 'completed') return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      content: inputValue,
-      isUser: true,
-      timestamp: new Date().toLocaleTimeString()
-    }
-
-    setMessages((prev: Message[]) => [...prev, newMessage])
-    setInputValue("")
-    setIsLoading(true)
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: inputValue,
-          jobId,
-          modelId: 'gemini'
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get response');
-      }
-
-      // Create a new message for the AI response
-      const aiMessageId = Date.now().toString();
-      setMessages((prev: Message[]) => [...prev, {
-        id: aiMessageId,
-        content: '',
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString()
-      }]);
-
-      // Handle streaming response
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let accumulatedContent = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        accumulatedContent += chunk;
-
-        // Update the AI message with accumulated content
-        setMessages((prev: Message[]) => 
-          prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { ...msg, content: accumulatedContent }
-              : msg
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Error sending message:', error)
-      setMessages((prev: Message[]) => [...prev, {
-        id: Date.now().toString(),
-        content: error instanceof Error ? error.message : "Sorry, I encountered an error. Please try again.",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString()
-      }])
-    } finally {
-      setIsLoading(false)
-    }
+  const handleInitiateSendMessage = async () => {
+    if (!inputValue.trim() || processingStatus !== 'completed' || isLoading) return;
+    // Call the onSendMessage prop passed from the parent
+    await onSendMessage();
   }
-
-  const handleExamplePrompt = (prompt: string) => {
-    setInputValue(prompt)
+  
+  const handlePromptClick = (prompt: string) => {
+    if (onExamplePromptClick) {
+      onExamplePromptClick(prompt);
+    } else {
+      onInputChange(prompt); // Fallback if no specific handler
+    }
   }
 
   const formatMessageContent = (content: string) => {
@@ -162,22 +94,25 @@ export function ChatContainer({ jobId }: ChatContainerProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto p-4">
+        {/* VideoStatus now uses props directly */}
         {processingStatus !== 'idle' && (
           <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-            <VideoStatus status={processingStatus} />
-            {processingStatus === 'processing' && (
+            <VideoStatus status={processingStatus} message={processingMessage} />
+             {/* Informative text can be part of processingMessage or added here if generic */}
+            {(processingStatus === 'processing' && !processingMessage) && (
               <p className="text-sm text-gray-500 mt-2">
-                Processing may take 3-5 minutes. You can ask questions once it's complete.
+                Video analysis is underway. This might take a few moments.
               </p>
             )}
-            {processingStatus === 'completed' && (
+            {(processingStatus === 'completed' && !processingMessage) && (
               <p className="text-sm text-green-600 mt-2">
-                Video processing complete! You can now ask questions about the video.
+                Analysis complete. You can now interact with the chat.
               </p>
             )}
           </div>
         )}
         
+        {/* Example prompts display logic remains, uses handlePromptClick */}
         {messages.length === 0 && processingStatus === 'completed' && (
           <div className="space-y-4">
             <h3 className="text-base font-medium text-gray-900">Example Questions</h3>
@@ -185,7 +120,7 @@ export function ChatContainer({ jobId }: ChatContainerProps) {
               {examplePrompts.map((prompt, index) => (
                 <button
                   key={index}
-                  onClick={() => handleExamplePrompt(prompt)}
+                  onClick={() => handlePromptClick(prompt)}
                   className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-indigo-600 hover:bg-indigo-50 transition-colors text-sm"
                 >
                   {prompt}
@@ -196,50 +131,18 @@ export function ChatContainer({ jobId }: ChatContainerProps) {
         )}
         
         <div className="space-y-4">
-          {messages.map((message: Message) => (
-            <div
+          {/* Render messages using ChatMessage component */}
+          {messages.map((message) => (
+            <ChatMessage
               key={message.id}
-              className={`flex ${message.isUser ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-lg p-3 ${
-                  message.isUser
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-100 text-gray-900"
-                }`}
-              >
-                {message.isUser ? (
-                  message.content
-                ) : (
-                  <ReactMarkdown
-                    className="prose prose-sm max-w-none"
-                    components={{
-                      code({ node, inline, className, children, ...props }: any) {
-                        const match = /language-(\w+)/.exec(className || '');
-                        return !inline && match ? (
-                          <SyntaxHighlighter
-                            style={vscDarkPlus as any}
-                            language={match[1]}
-                            PreTag="div"
-                            className="rounded-md"
-                            {...props}
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        ) : (
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        );
-                      }
-                    }}
-                  >
-                    {formatMessageContent(message.content)}
-                  </ReactMarkdown>
-                )}
-              </div>
-            </div>
+              message={{
+                ...message, // Pass all message properties
+                content: formatMessageContent(message.content), // Apply formatting
+                timestamp: message.timestamp || new Date().toLocaleTimeString(), // Ensure timestamp
+              }}
+            />
           ))}
+          {/* Display "Thinking..." message based on isLoading prop */}
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-indigo-50 text-indigo-600 rounded-lg p-3 flex items-center gap-2">
@@ -252,18 +155,19 @@ export function ChatContainer({ jobId }: ChatContainerProps) {
         </div>
       </div>
 
+      {/* Input area uses props for value, onChange, and sending messages */}
       <div className="p-4 border-t bg-white">
         <div className="flex gap-2">
           <Input
             value={inputValue}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
-            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && handleSendMessage()}
-            placeholder={processingStatus === 'completed' ? "Ask a question about the video..." : "Processing video..."}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => onInputChange(e.target.value)}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && !isLoading && handleInitiateSendMessage()}
+            placeholder={processingStatus === 'completed' ? "Ask a question about the video..." : (processingStatus === 'processing' ? "Processing video..." : "Please submit a video first")}
             className="flex-1 focus:border-indigo-600 focus:ring-indigo-600"
             disabled={isLoading || processingStatus !== 'completed'}
           />
           <Button
-            onClick={handleSendMessage}
+            onClick={handleInitiateSendMessage}
             disabled={isLoading || !inputValue.trim() || processingStatus !== 'completed'}
             size="icon"
             className="bg-indigo-600 hover:bg-indigo-700 text-white"
@@ -274,4 +178,9 @@ export function ChatContainer({ jobId }: ChatContainerProps) {
       </div>
     </div>
   )
-} 
+}
+// Removed the direct ReactMarkdown rendering here as it's encapsulated within ChatMessage
+// ChatMessage is now expected to handle the markdown rendering.
+// If ChatMessage does not handle markdown, the ReactMarkdown logic would need to be
+// re-integrated within the messages.map loop, similar to the original code,
+// but using the message.content from the mapped messages.

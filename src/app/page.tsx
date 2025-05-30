@@ -12,13 +12,15 @@ import { extractVideoId, isValidYouTubeUrl } from "@/lib/youtube"
 import { Button } from "@/components/ui/button"
 import { Settings, Youtube, LogIn, UserPlus, LogOut } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { VideoStatus } from "@/components/video/video-status"
+// DropdownMenu components are not used directly on this page after sidebar integration for settings (if any were planned there)
+// import {
+//   DropdownMenu,
+//   DropdownMenuContent,
+//   DropdownMenuItem,
+//   DropdownMenuTrigger,
+// } from "@/components/ui/dropdown-menu"
+// VideoStatus is now primarily shown inside ChatContainer, not directly on page.tsx
+// import { VideoStatus } from "@/components/video/video-status" 
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import AppSidebar from "@/components/layout/AppSidebar"; // Import the new sidebar
 
 // Firebase Imports
 import { auth, googleProvider } from "@/lib/firebaseClient"
@@ -58,10 +61,11 @@ const examplePrompts = [
   "Explain this video like I am 5"
 ]
 
+// Simplify the models array to only include Gemini, as selection is being disabled.
 const models = [
-  { id: "gemini", name: "Gemini", description: "Google's latest AI model" },
-  { id: "openai", name: "GPT-4", description: "OpenAI's most advanced model" },
-  { id: "anthropic", name: "Claude", description: "Anthropic's model" },
+  { id: "gemini", name: "Gemini", description: "Google's latest AI model" }
+  // { id: "openai", name: "GPT-4", description: "OpenAI's most advanced model" }, // Removed
+  // { id: "anthropic", name: "Claude", description: "Anthropic's model" }, // Removed
 ]
 
 export default function Home() {
@@ -412,223 +416,237 @@ export default function Home() {
   const [isSignInOpen, setIsSignInOpen] = useState(false)
   const [isSignUpOpen, setIsSignUpOpen] = useState(false)
 
+  const handleOpenSignInDialog = () => {
+    setIsSignInOpen(true);
+  };
+
   return (
-    <main className="min-h-screen bg-background">
-      {/* Navigation Bar */}
-      <nav className="border-b bg-white">
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <Youtube className="h-8 w-8 text-black" />
-              <span className="ml-2 text-xl font-bold text-black">ChatPye</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {authLoading ? (
-                <p className="text-sm text-gray-600">Loading auth...</p>
-              ) : currentUser ? (
-                <>
-                  <p className="text-sm text-gray-700 hidden sm:block">Welcome, {currentUser.displayName || currentUser.email}</p>
-                  <Button variant="outline" size="sm" onClick={handleSignOut} className="flex items-center">
-                    <LogOut className="h-4 w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign Out</span>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Dialog open={isSignInOpen} onOpenChange={setIsSignInOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="flex items-center text-black hover:text-gray-700">
-                        <LogIn className="h-4 w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign In</span>
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Sign In</DialogTitle>
-                        <DialogDescription>
-                          Enter your email and password to sign in to your account.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                          <label htmlFor="email" className="text-sm font-medium">Email</label>
-                          <Input
-                            id="email"
-                            type="email"
-                            placeholder="Enter your email"
-                            value={authEmail}
-                            onChange={(e) => setAuthEmail(e.target.value)}
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <label htmlFor="password" className="text-sm font-medium">Password</label>
-                          <Input
-                            id="password"
-                            type="password"
-                            placeholder="Enter your password"
-                            value={authPassword}
-                            onChange={(e) => setAuthPassword(e.target.value)}
-                          />
-                        </div>
-                        <Button onClick={handleSignIn} className="w-full">Sign In</Button>
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-                          </div>
-                        </div>
-                        <Button variant="outline" onClick={handleGoogleSignIn} className="w-full">
-                          <img src="/google.svg" alt="Google" className="h-4 w-4 mr-2" />
-                          Sign in with Google
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-
-                  <Dialog open={isSignUpOpen} onOpenChange={setIsSignUpOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="flex items-center border-black text-black hover:bg-gray-50">
-                        <UserPlus className="h-4 w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign Up</span>
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Create an Account</DialogTitle>
-                        <DialogDescription>
-                          Enter your email and password to create a new account.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                          <label htmlFor="signup-email" className="text-sm font-medium">Email</label>
-                          <Input
-                            id="signup-email"
-                            type="email"
-                            placeholder="Enter your email"
-                            value={authEmail}
-                            onChange={(e) => setAuthEmail(e.target.value)}
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <label htmlFor="signup-password" className="text-sm font-medium">Password</label>
-                          <Input
-                            id="signup-password"
-                            type="password"
-                            placeholder="Create a password"
-                            value={authPassword}
-                            onChange={(e) => setAuthPassword(e.target.value)}
-                          />
-                        </div>
-                        <Button onClick={handleSignUp} className="w-full">Create Account</Button>
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-                          </div>
-                        </div>
-                        <Button variant="outline" onClick={handleGoogleSignIn} className="w-full">
-                          <img src="/google.svg" alt="Google" className="h-4 w-4 mr-2" />
-                          Sign up with Google
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Search Section */}
-      <div className="bg-gray-50 border-b">
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <form onSubmit={handleUrlSubmit} className="flex flex-col sm:flex-row gap-4">
-            <Input
-              type="text"
-              placeholder="Paste YouTube URL here..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="flex-1"
-              aria-label="YouTube URL Input"
-            />
-            <Button type="submit" disabled={isLoading || authLoading} className="bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto">
-              {isLoading ? "Loading..." : "Start Learning"}
-            </Button>
-          </form>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column - Video Section and Info */}
-          <div className="lg:col-span-8 space-y-6 order-1">
-            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
-              <div className="w-full">
-                {videoId ? (
-                  <div className="w-full aspect-video bg-black relative">
-                    <VideoPlayer videoId={videoId} />
-                  </div>
+    <div className="flex h-screen overflow-hidden bg-background">
+      <AppSidebar />
+      <div className="flex-1 flex flex-col overflow-y-auto">
+        {/* Navigation Bar */}
+        <nav className="border-b bg-white">
+          <div className="max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-8"> {/* Reduced horizontal padding for smaller screens */}
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center">
+                {/* Hamburger menu icon can be added here to toggle AppSidebar on small screens if needed */}
+                <Youtube className="h-7 w-7 sm:h-8 sm:w-8 text-black" /> {/* Slightly smaller icon on mobile */}
+                <span className="ml-2 text-lg sm:text-xl font-bold text-black">ChatPye</span> {/* Adjusted font size */}
+              </div>
+              <div className="flex items-center space-x-1 sm:space-x-2"> {/* Reduced space on mobile */}
+                {authLoading ? (
+                  <p className="text-xs sm:text-sm text-gray-600">Loading auth...</p>
+                ) : currentUser ? (
+                  <>
+                    <p className="text-xs sm:text-sm text-gray-700 hidden md:block"> {/* Show welcome on md+ */}
+                      Welcome, {currentUser.displayName || currentUser.email?.split('@')[0]} {/* Shorter email */}
+                    </p>
+                    <Button variant="outline" size="sm" onClick={handleSignOut} className="flex items-center px-2 py-1 text-xs sm:text-sm sm:px-3 sm:py-2">
+                      <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign Out</span>
+                    </Button>
+                  </>
                 ) : (
-                  <div className="w-full aspect-video bg-black/90 relative flex flex-col items-center justify-center p-4 text-center">
-                    <Youtube className="h-16 w-16 text-gray-400 mb-4" />
-                    <h2 className="text-lg sm:text-xl font-medium text-white mb-2">Welcome to ChatPye</h2>
-                    <p className="text-sm sm:text-base text-gray-300">Your AI-powered video learning companion. Paste a YouTube URL above to begin.</p>
-                  </div>
+                  <>
+                    <Dialog open={isSignInOpen} onOpenChange={setIsSignInOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="flex items-center text-black hover:text-gray-700 px-2 py-1 text-xs sm:text-sm sm:px-3 sm:py-2">
+                          <LogIn className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign In</span>
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md"> {/* Ensure dialog content is not too wide */}
+                        <DialogHeader>
+                          <DialogTitle className="text-lg sm:text-xl">Sign In</DialogTitle> {/* Responsive title */}
+                          <DialogDescription>
+                            Enter your email and password to sign in to your account.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-3 sm:gap-4 py-4"> {/* Slightly reduced gap */}
+                          <div className="grid gap-1.5 sm:gap-2">
+                            <label htmlFor="email" className="text-xs sm:text-sm font-medium">Email</label>
+                            <Input
+                              id="email"
+                              type="email"
+                              placeholder="Enter your email"
+                              value={authEmail}
+                              onChange={(e) => setAuthEmail(e.target.value)}
+                              className="w-full text-sm sm:text-base"
+                            />
+                          </div>
+                          <div className="grid gap-1.5 sm:gap-2">
+                            <label htmlFor="password" className="text-xs sm:text-sm font-medium">Password</label>
+                            <Input
+                              id="password"
+                              type="password"
+                              placeholder="Enter your password"
+                              value={authPassword}
+                              onChange={(e) => setAuthPassword(e.target.value)}
+                              className="w-full text-sm sm:text-base"
+                            />
+                          </div>
+                          <Button onClick={handleSignIn} className="w-full text-sm sm:text-base">Sign In</Button>
+                          <div className="relative my-2"> {/* Added margin */}
+                            <div className="absolute inset-0 flex items-center">
+                              <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                            </div>
+                          </div>
+                          <Button variant="outline" onClick={handleGoogleSignIn} className="w-full text-sm sm:text-base">
+                            <img src="/google.svg" alt="Google" className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" />
+                            Sign in with Google
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={isSignUpOpen} onOpenChange={setIsSignUpOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="flex items-center border-black text-black hover:bg-gray-50 px-2 py-1 text-xs sm:text-sm sm:px-3 sm:py-2">
+                          <UserPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-0 sm:mr-2" /> <span className="hidden sm:inline">Sign Up</span>
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md"> {/* Ensure dialog content is not too wide */}
+                        <DialogHeader>
+                          <DialogTitle className="text-lg sm:text-xl">Create an Account</DialogTitle> {/* Responsive title */}
+                          <DialogDescription>
+                            Enter your email and password to create a new account.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-3 sm:gap-4 py-4"> {/* Slightly reduced gap */}
+                          <div className="grid gap-1.5 sm:gap-2">
+                            <label htmlFor="signup-email" className="text-xs sm:text-sm font-medium">Email</label>
+                            <Input
+                              id="signup-email"
+                              type="email"
+                              placeholder="Enter your email"
+                              value={authEmail}
+                              onChange={(e) => setAuthEmail(e.target.value)}
+                              className="w-full text-sm sm:text-base"
+                            />
+                          </div>
+                          <div className="grid gap-1.5 sm:gap-2">
+                            <label htmlFor="signup-password" className="text-xs sm:text-sm font-medium">Password</label>
+                            <Input
+                              id="signup-password"
+                              type="password"
+                              placeholder="Create a password"
+                              value={authPassword}
+                              onChange={(e) => setAuthPassword(e.target.value)}
+                              className="w-full text-sm sm:text-base"
+                            />
+                          </div>
+                          <Button onClick={handleSignUp} className="w-full text-sm sm:text-base">Create Account</Button>
+                          <div className="relative my-2"> {/* Added margin */}
+                            <div className="absolute inset-0 flex items-center">
+                              <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                            </div>
+                          </div>
+                          <Button variant="outline" onClick={handleGoogleSignIn} className="w-full text-sm sm:text-base">
+                            <img src="/google.svg" alt="Google" className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" />
+                            Sign up with Google
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </>
                 )}
               </div>
-            </Card>
-
-            {/* Video Info - Title can be shown here */}
-            {videoInfo?.title && videoId && (
-              <Card className="rounded-xl p-4 bg-white shadow-sm border border-slate-100">
-                <h2 className="text-lg font-semibold text-gray-800">{videoInfo.title}</h2>
-              </Card>
-            )}
+            </div>
           </div>
+        </nav>
 
-          {/* Right Column - Chat */}
-          <div className="lg:col-span-4 order-2">
-            <Card className="rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100 h-[calc(100vh-12rem)] flex flex-col">
-              {processingStatus !== 'idle' && (
-                <div className="border-b border-slate-100">
-                  <VideoStatus 
-                    status={processingStatus} 
-                    message={processingMessage} 
-                  />
-                </div>
-              )}
-              <div className="p-2 border-b">
-                 <label htmlFor="model-select" className="block text-sm font-medium text-gray-700 mb-1">Select AI Model:</label>
-                 <select 
-                    id="model-select"
-                    value={selectedModel.id}
-                    onChange={(e) => setSelectedModel(models.find(m => m.id === e.target.value) || models[0])}
-                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                    disabled={isAiResponding}
-                 >
-                    {models.map(model => (
-                        <option key={model.id} value={model.id}>{model.name} - {model.description}</option>
-                    ))}
-                 </select>
-              </div>
-              <ChatTabs 
-                jobId={jobId} 
-                disabled={!jobId && selectedModel.id !== 'gemini'}
-                messages={messages}
-                inputValue={inputValue}
-                onInputChange={setInputValue}
-                onSendMessage={handleSendMessage}
-                isLoading={isAiResponding} 
+        {/* Search Section */}
+        <div className="bg-gray-50 border-b">
+          <div className="max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-8 py-3 sm:py-4"> {/* Reduced padding */}
+            <form onSubmit={handleUrlSubmit} className="flex flex-col sm:flex-row gap-2 sm:gap-4"> {/* Reduced gap */}
+              <Input
+                type="text"
+                placeholder="Paste YouTube URL here..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="flex-1 text-sm sm:text-base" /* Adjusted font size */
+                aria-label="YouTube URL Input"
               />
-            </Card>
+              <Button 
+                type="submit" 
+                disabled={isLoading || authLoading} 
+                className="bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto text-sm sm:text-base px-3 py-2 sm:px-4" /* Adjusted padding & font */
+              >
+                {isLoading ? "Loading..." : "Start Learning"}
+              </Button>
+            </form>
           </div>
         </div>
+
+        {/* Main Content Area Grid - wrapped in a main tag for semantics */}
+        <main className="flex-1 p-2 sm:p-4 lg:p-6"> {/* Reduced padding */}
+          <div className="max-w-[1920px] mx-auto"> {/* This ensures content within doesn't exceed max width */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-6"> {/* Reduced gap */}
+              {/* Left Column - Video Section and Info */}
+              <div className="lg:col-span-7 xl:col-span-8 space-y-3 sm:space-y-6 order-1"> {/* Adjusted column span for potentially more chat space */}
+                <Card className="rounded-lg sm:rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100">
+                  <div className="w-full">
+                    {videoId ? (
+                      <div className="w-full aspect-video bg-black relative">
+                        <VideoPlayer videoId={videoId} />
+                      </div>
+                    ) : (
+                      <div className="w-full aspect-video bg-black/90 relative flex flex-col items-center justify-center p-4 text-center">
+                        <Youtube className="h-12 w-12 sm:h-16 sm:w-16 text-gray-400 mb-2 sm:mb-4" />
+                        <h2 className="text-md sm:text-lg md:text-xl font-medium text-white mb-1 sm:mb-2">Welcome to ChatPye</h2>
+                        <p className="text-xs sm:text-sm md:text-base text-gray-300">Paste a YouTube URL above to begin.</p>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                {/* Video Info - Title can be shown here */}
+                {videoInfo?.title && videoId && (
+                  <Card className="rounded-lg sm:rounded-xl p-3 sm:p-4 bg-white shadow-sm border border-slate-100">
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-800">{videoInfo.title}</h2>
+                  </Card>
+                )}
+              </div>
+
+              {/* Right Column - Chat */}
+              <div className="lg:col-span-5 xl:col-span-4 order-2"> {/* Adjusted column span */}
+                {/* The h-full or specific height for the chat card needs to be contextually aware.
+                    Given the parent main area has padding, and this is part of a grid,
+                    h-[calc(100vh-Xrem)] might need adjustment or be replaced by flex-grow properties
+                    if the parent grid row is set to stretch.
+                    For now, keeping h-[calc(100vh-12rem)] as it was, but this might need review
+                    based on how it looks with the new overall page structure and sidebar.
+                    A common pattern is for the chat card to take h-full of its grid cell,
+                    and the grid cell to stretch.
+                */}
+                <Card className="rounded-lg sm:rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100 h-[calc(100vh-11rem)] sm:h-[calc(100vh-12rem)] flex flex-col"> {/* Adjusted height slightly for mobile */}
+                  {/* VideoStatus is now shown within ChatContainer */}
+                  {/* Model selection is removed */}
+                  <ChatTabs 
+                    jobId={jobId}
+                    videoId={videoId} 
+                    currentUser={currentUser} // Pass currentUser
+                    onSignInClick={handleOpenSignInDialog} // Pass handler
+                    disabled={!jobId && selectedModel.id !== 'gemini'} 
+                    messages={messages}
+                    inputValue={inputValue}
+                    onInputChange={setInputValue}
+                    onSendMessage={handleSendMessage}
+                    isLoading={isAiResponding}
+                    processingStatus={processingStatus}
+                    processingMessage={processingMessage}
+                  />
+                </Card>
+              </div>
+            </div>
+          </div>
+        </main>
+        <Toaster />
       </div>
-      <Toaster />
-    </main>
+    </div>
   )
-} 
+}
