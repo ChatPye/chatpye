@@ -93,84 +93,91 @@ export function ChatContainer({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto p-4">
-        {/* VideoStatus now uses props directly */}
-        {processingStatus !== 'idle' && (
-          <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-            <VideoStatus status={processingStatus} message={processingMessage} />
-             {/* Informative text can be part of processingMessage or added here if generic */}
-            {(processingStatus === 'processing' && !processingMessage) && (
-              <p className="text-sm text-gray-500 mt-2">
-                Video analysis is underway. This might take a few moments.
-              </p>
-            )}
-            {(processingStatus === 'completed' && !processingMessage) && (
-              <p className="text-sm text-green-600 mt-2">
-                Analysis complete. You can now interact with the chat.
-              </p>
-            )}
-          </div>
-        )}
-        
-        {/* Example prompts display logic remains, uses handlePromptClick */}
-        {messages.length === 0 && processingStatus === 'completed' && (
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Example Questions</h3>
-            <div className="space-y-2">
-              {examplePrompts.map((prompt, index) => (
-                <button
-                  key={index}
-                  onClick={() => handlePromptClick(prompt)}
-                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-indigo-600 hover:bg-indigo-50 transition-colors text-sm"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        <div className="space-y-4">
-          {/* Render messages using ChatMessage component */}
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={{
-                ...message, // Pass all message properties
-                content: formatMessageContent(message.content), // Apply formatting
-                timestamp: message.timestamp || new Date().toLocaleTimeString(), // Ensure timestamp
-              }}
-            />
-          ))}
-          {/* Display "Thinking..." message based on isLoading prop */}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-indigo-50 text-indigo-600 rounded-lg p-3 flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Thinking...
-              </div>
+      {/* Main content area with fixed height and proper spacing */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Status section - always visible */}
+        <div className="flex-none p-4 border-b">
+          {/* Video Status */}
+          {processingStatus !== 'idle' && (
+            <div className="p-4 border rounded-lg bg-gradient-to-r from-gray-900/5 to-indigo-950/5 shadow-sm">
+              <VideoStatus status={processingStatus} message={processingMessage} />
+              {(processingStatus === 'processing' && !processingMessage) && (
+                <p className="text-sm text-gray-600 mt-2">
+                  Video analysis is underway. This might take a few moments.
+                </p>
+              )}
+              {(processingStatus === 'completed' && !processingMessage) && (
+                <p className="text-sm text-indigo-600 mt-2">
+                  Analysis complete. You can now interact with the chat.
+                </p>
+              )}
             </div>
           )}
-          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Messages and Prompts section - scrollable container */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 space-y-4">
+            {/* Example Prompts - show when no messages and processing is complete */}
+            {messages.length === 0 && processingStatus === 'completed' && (
+              <div className="space-y-3">
+                <h3 className="text-base font-medium text-gray-900">Example Questions</h3>
+                <div className="grid gap-2">
+                  {examplePrompts.map((prompt, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handlePromptClick(prompt)}
+                      className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-indigo-600 hover:bg-gradient-to-r hover:from-gray-900/5 hover:to-indigo-950/5 transition-colors text-sm"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  message={{
+                    ...message,
+                    content: formatMessageContent(message.content),
+                    timestamp: message.timestamp || new Date().toLocaleTimeString(),
+                  }}
+                />
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gradient-to-r from-gray-900/5 to-indigo-950/5 text-indigo-600 rounded-lg p-3 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Thinking...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Input area uses props for value, onChange, and sending messages */}
-      <div className="p-4 border-t bg-white">
+      {/* Input area - fixed at bottom with minimal padding */}
+      <div className="flex-none p-2 border-t bg-white shadow-sm">
         <div className="flex gap-2">
           <Input
             value={inputValue}
             onChange={(e: ChangeEvent<HTMLInputElement>) => onInputChange(e.target.value)}
             onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && !isLoading && handleInitiateSendMessage()}
             placeholder={processingStatus === 'completed' ? "Ask a question about the video..." : (processingStatus === 'processing' ? "Processing video..." : "Please submit a video first")}
-            className="flex-1 focus:border-indigo-600 focus:ring-indigo-600"
+            className="flex-1 h-10 text-sm focus:border-indigo-600 focus:ring-indigo-600"
             disabled={isLoading || processingStatus !== 'completed'}
           />
           <Button
             onClick={handleInitiateSendMessage}
             disabled={isLoading || !inputValue.trim() || processingStatus !== 'completed'}
             size="icon"
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="h-10 w-10 bg-gradient-to-r from-gray-900 to-indigo-950 hover:from-gray-800 hover:to-indigo-900 text-white"
           >
             <SendHorizontal className="h-4 w-4" />
           </Button>

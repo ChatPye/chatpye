@@ -7,7 +7,18 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button"; 
 import { Textarea } from "@/components/ui/textarea"; // Import Textarea
-import { MessageSquare, Clock, FileText, Bot, Loader2, AlertTriangle, PlayCircle, Edit3, Trash2, UserCircle } from "lucide-react"; 
+import { 
+  MessageSquare, 
+  Clock, 
+  FileText, 
+  Bot, 
+  Loader2, 
+  AlertTriangle, 
+  PlayCircle, 
+  Edit3, 
+  Trash2, 
+  UserCircle 
+} from "@/components/ui/icons";
 import { ChatContainer, Message, ProcessingStatus } from "./chat-container";
 import { useVideoPlayer } from '@/contexts/video-player-context';
 
@@ -100,43 +111,42 @@ export function ChatTabs({
 
   return (
     <Card className="h-full flex flex-col">
-      <div className="p-3 sm:p-4 border-b bg-white sticky top-0 z-10"> {/* Reduced padding on mobile */}
-        <h2 className="text-lg sm:text-xl font-semibold text-indigo-600 mb-1 sm:mb-2">ChatPye</h2> {/* Adjusted font size & margin */}
-        <p className="text-xs sm:text-sm text-gray-500">Your AI-powered video learning companion</p> {/* Adjusted font size */}
+      <div className="p-4 border-b bg-gradient-to-r from-gray-900/5 to-indigo-950/5 sticky top-0 z-10">
+        <h2 className="text-xl font-semibold bg-gradient-to-r from-gray-900 to-indigo-950 bg-clip-text text-transparent mb-1">ChatPye</h2>
+        <p className="text-sm text-gray-600">Your AI-powered video learning companion</p>
       </div>
       <Tabs 
         defaultValue="chat" 
         className="flex-1 flex flex-col"
         onValueChange={setActiveTab} 
       >
-        <TabsList className="w-full justify-start border-b rounded-none bg-white z-10 p-0">
-          {/* Adjusted padding, font size, and icon size for TabsTrigger */}
+        <TabsList className="w-full justify-start border-b rounded-none bg-white z-10 px-4">
           <TabsTrigger 
             value="chat" 
-            className="px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1 sm:gap-2"
+            className="px-4 py-2.5 text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2"
           >
-            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
+            <MessageSquare className="h-5 w-5" />
             Chat
           </TabsTrigger>
           <TabsTrigger 
             value="timeline" 
-            className="px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1 sm:gap-2"
+            className="px-4 py-2.5 text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2"
           >
-            <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
+            <Clock className="h-5 w-5" />
             Timeline
           </TabsTrigger>
           <TabsTrigger 
             value="notes" 
-            className="px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1 sm:gap-2"
+            className="px-4 py-2.5 text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2"
           >
-            <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
+            <FileText className="h-5 w-5" />
             Notes
           </TabsTrigger>
           <TabsTrigger 
             value="agents" 
-            className="px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1 sm:gap-2"
+            className="px-4 py-2.5 text-sm data-[state=active]:text-indigo-600 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-2"
           >
-            <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
+            <Bot className="h-5 w-5" />
             Agents
           </TabsTrigger>
         </TabsList>
@@ -150,55 +160,55 @@ export function ChatTabs({
             isLoading={isLoading}
             processingStatus={processingStatus}
             processingMessage={processingMessage}
-            onExamplePromptClick={onInputChange} // Example: clicking prompt sets input
+            onExamplePromptClick={onInputChange}
           />
         </TabsContent>
-        <TabsContent value="timeline" className="flex-1 flex flex-col m-0 p-2 sm:p-4 overflow-y-auto bg-slate-50"> {/* Adjusted padding */}
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-3 sm:mb-4">Video Chapters</h3> {/* Adjusted font size & margin */}
+        <TabsContent value="timeline" className="flex-1 flex flex-col m-0 p-4 overflow-y-auto bg-gradient-to-b from-slate-50 to-indigo-50/30">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">Video Chapters</h3>
           {isLoadingChapters && (
-            <div className="flex items-center justify-center text-xs sm:text-sm text-gray-500"> {/* Adjusted font size */}
-              <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin mr-2" />
+            <div className="flex items-center justify-center text-sm text-gray-500">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
               Loading chapters...
             </div>
           )}
           {chapterError && (
             <div className="flex flex-col items-center justify-center text-red-600">
-              <AlertTriangle className="h-7 w-7 sm:h-8 sm:w-8 mb-1.5 sm:mb-2" />
-              <p className="font-medium text-sm sm:text-base">Error loading chapters:</p>
-              <p className="text-xs sm:text-sm">{chapterError}</p>
+              <AlertTriangle className="h-8 w-8 mb-2" />
+              <p className="font-medium text-base">Error loading chapters:</p>
+              <p className="text-sm">{chapterError}</p>
             </div>
           )}
           {!isLoadingChapters && !chapterError && chapters.length === 0 && (
-            <p className="text-center text-xs sm:text-sm text-gray-500">No chapters available for this video.</p>
+            <p className="text-center text-sm text-gray-500">No chapters available for this video.</p>
           )}
           {!isLoadingChapters && !chapterError && chapters.length > 0 && (
-            <div className="space-y-2 sm:space-y-3">
+            <div className="space-y-3">
               {chapters.map((chapter) => (
-                <Card key={chapter.id} className="p-2.5 sm:p-4 shadow-sm bg-white">
-                  <h4 className="font-semibold text-indigo-700 text-sm sm:text-md mb-0.5 sm:mb-1">{chapter.title}</h4>
+                <Card key={chapter.id} className="p-4 shadow-sm bg-white">
+                  <h4 className="font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent text-base mb-1">{chapter.title}</h4>
                   <Button
                     variant="link"
-                    className="p-0 h-auto text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 hover:underline mb-1 sm:mb-2 flex items-center"
+                    className="p-0 h-auto text-sm text-indigo-600 hover:text-indigo-800 hover:underline mb-2 flex items-center"
                     onClick={() => seekTo(chapter.startTime)}
                   >
-                    <PlayCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
+                    <PlayCircle className="h-4 w-4 mr-1.5" />
                     Go to: {formatTime(chapter.startTime)}
                   </Button>
-                  <p className="text-xs sm:text-sm text-gray-700 leading-normal sm:leading-relaxed">{chapter.summary}</p> {/* Adjusted leading */}
+                  <p className="text-sm text-gray-700 leading-relaxed">{chapter.summary}</p>
                 </Card>
               ))}
             </div>
           )}
         </TabsContent>
-        <TabsContent value="notes" className="flex-1 flex flex-col m-0 p-2 sm:p-4 overflow-y-auto bg-slate-50 space-y-3 sm:space-y-4">
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-800">My Notes</h3>
+        <TabsContent value="notes" className="flex-1 flex flex-col m-0 p-4 overflow-y-auto bg-gradient-to-b from-slate-50 to-indigo-50/30 space-y-4">
+          <h3 className="text-xl font-semibold text-gray-800">My Notes</h3>
           
           {!currentUser && (
-            <Card className="p-4 sm:p-6 flex flex-col items-center justify-center text-center bg-white">
-              <UserCircle className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 mb-2 sm:mb-3" />
-              <p className="mb-2 sm:mb-3 text-xs sm:text-sm text-gray-600">Please sign in to create and view your notes for this video.</p>
+            <Card className="p-6 flex flex-col items-center justify-center text-center bg-white">
+              <UserCircle className="h-12 w-12 text-indigo-400 mb-3" />
+              <p className="mb-3 text-sm text-gray-600">Please sign in to create and view your notes for this video.</p>
               {onSignInClick && (
-                <Button onClick={onSignInClick} variant="default" className="bg-indigo-600 hover:bg-indigo-700 text-xs sm:text-sm px-3 py-1.5 sm:px-4 sm:py-2">
+                <Button onClick={onSignInClick} variant="default" className="bg-gradient-to-r from-gray-900 to-indigo-950 hover:from-gray-800 hover:to-indigo-900 text-sm px-4 py-2">
                   Sign In
                 </Button>
               )}
@@ -206,20 +216,20 @@ export function ChatTabs({
           )}
 
           {currentUser && !videoId && (
-            <Card className="p-4 sm:p-6 text-center bg-white">
-              <p className="text-xs sm:text-sm text-gray-600">Please load a video to take and view notes.</p>
+            <Card className="p-6 text-center bg-white">
+              <p className="text-sm text-gray-600">Please load a video to take and view notes.</p>
             </Card>
           )}
 
           {currentUser && videoId && (
             <>
-              <div className="bg-white p-3 sm:p-4 rounded-lg shadow">
+              <div className="bg-white p-4 rounded-lg shadow">
                 <Textarea
                   value={noteInput}
                   onChange={(e) => setNoteInput(e.target.value)}
                   placeholder="Type your note here..."
-                  className="w-full min-h-[70px] sm:min-h-[100px] mb-2 sm:mb-3 border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 text-sm sm:text-base"
-                  rows={3} /* Adjusted rows for mobile */
+                  className="w-full min-h-[100px] mb-3 border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 text-base"
+                  rows={3}
                 />
                 <Button
                   onClick={() => {
@@ -238,60 +248,50 @@ export function ChatTabs({
                       setIsSavingNote(false);
                     }, 500);
                   }}
-                  disabled={!noteInput.trim() || isSavingNote || !videoId}
-                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm px-3 py-1.5 sm:px-4 sm:py-2"
+                  disabled={!noteInput.trim() || isSavingNote}
+                  className="w-full bg-gradient-to-r from-gray-900 to-indigo-950 hover:from-gray-800 hover:to-indigo-900 text-white"
                 >
                   {isSavingNote ? (
                     <>
-                      <Loader2 className="mr-1.5 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Saving...
                     </>
                   ) : (
-                    <><Edit3 className="mr-1.5 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" /> Save Note</>
+                    'Save Note'
                   )}
                 </Button>
               </div>
-
-              <div className="mt-4 sm:mt-6">
-                <h4 className="text-md sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">Saved Notes for this Video:</h4>
-                {savedNotes.filter(note => note.videoId === videoId && note.userId === currentUser.uid).length === 0 ? (
-                  <p className="text-xs sm:text-sm text-gray-500 bg-white p-3 sm:p-4 rounded-lg shadow text-center">You have no notes for this video yet.</p>
-                ) : (
-                  <div className="space-y-2 sm:space-y-3">
-                    {savedNotes
-                      .filter(note => note.videoId === videoId && note.userId === currentUser.uid)
-                      .sort((a,b) => b.createdAt.getTime() - a.createdAt.getTime()) 
-                      .map(note => (
-                        <Card key={note.id} className="p-2.5 sm:p-3 bg-white shadow">
-                          <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap break-words">{note.content}</p>
-                          <div className="flex justify-between items-center mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-gray-200">
-                            <p className="text-[10px] sm:text-xs text-gray-500"> {/* Adjusted date font size */}
-                              {new Date(note.createdAt).toLocaleDateString()} {new Date(note.createdAt).toLocaleTimeString()}
-                            </p>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-6 w-6 sm:h-7 sm:w-7 text-red-500 hover:bg-red-100"
-                              onClick={() => {
-                                setSavedNotes(prev => prev.filter(n => n.id !== note.id));
-                              }}
-                              aria-label="Delete note"
-                            >
-                              <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            </Button>
-                          </div>
-                        </Card>
-                    ))}
-                  </div>
-                )}
+              <div className="space-y-3">
+                {savedNotes.map((note) => (
+                  <Card key={note.id} className="p-4 bg-white">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm text-gray-500">
+                        {note.createdAt.toLocaleString()}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-gray-500 hover:text-red-600"
+                        onClick={() => {
+                          setSavedNotes(prevNotes => 
+                            prevNotes.filter(n => n.id !== note.id)
+                          );
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.content}</p>
+                  </Card>
+                ))}
               </div>
             </>
           )}
         </TabsContent>
-        <TabsContent value="agents" className="flex-1 flex flex-col m-0 p-2 sm:p-4 overflow-y-auto bg-slate-50">
+        <TabsContent value="agents" className="flex-1 flex flex-col m-0 p-4 overflow-y-auto bg-gradient-to-b from-slate-50 to-indigo-50/30">
           <div>
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-3 sm:mb-4">AI Agents</h3>
-            <p className="text-xs sm:text-sm text-gray-500">AI agents feature coming soon...</p>
+            <h3 className="text-xl font-semibold text-gray-800 mb-4">AI Agents</h3>
+            <p className="text-sm text-gray-500">AI agents feature coming soon...</p>
           </div>
         </TabsContent>
       </Tabs>
