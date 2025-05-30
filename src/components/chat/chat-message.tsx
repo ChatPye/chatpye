@@ -4,7 +4,8 @@ import React, { useState, Fragment } from "react" // Added useState, Fragment
 import { cn } from "@/lib/utils"
 import { MessageSquare, User, Copy, Check, PlayCircle } from "lucide-react" // Added Copy, Check, PlayCircle
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter/dist/esm/styles/prism'; // Using ESM for Next.js
+import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { prism as prismStyle } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Button } from "@/components/ui/button"; 
 import { useToast } from "@/components/ui/use-toast"; 
 import { useVideoPlayer } from '@/contexts/video-player-context'; // Import useVideoPlayer
@@ -72,7 +73,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <ReactMarkdown
             key={index}
             components={{
-              code({ node, inline, className, children, ...props }) {
+              code({ node, inline: isInline, className, children, ...props }: any) {
                 const matchLang = /language-(\w+)/.exec(className || '');
                 const codeString = String(children).replace(/\n$/, '');
                 // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -90,9 +91,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     console.error('Failed to copy code: ', err);
                   });
                 };
-                if (!inline && matchLang) {
+                if (!isInline && matchLang) {
                   return (
-                    <div className="relative group my-2"> {/* Added margin for spacing */}
+                    <div className="relative group my-2">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -103,10 +104,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
                         {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
                       <SyntaxHighlighter
-                        style={Prism} // Ensure Prism is defined or imported correctly if it's a specific style object
+                        style={prismStyle}
                         language={matchLang[1]}
                         PreTag="div"
-                        className="rounded-md text-sm" // Added text-sm for consistency
+                        className="rounded-md text-sm"
                         {...props}
                       >
                         {codeString}
