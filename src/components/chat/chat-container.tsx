@@ -94,11 +94,10 @@ export function ChatContainer({
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto p-4">
-        {/* VideoStatus now uses props directly */}
+        {/* VideoStatus display */}
         {processingStatus !== 'idle' && (
-          <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+          <div className="mb-4 sm:mb-6 p-4 border rounded-lg bg-gray-50"> {/* Adjusted VideoStatus margin */}
             <VideoStatus status={processingStatus} message={processingMessage} />
-             {/* Informative text can be part of processingMessage or added here if generic */}
             {(processingStatus === 'processing' && !processingMessage) && (
               <p className="text-sm text-gray-500 mt-2">
                 Video analysis is underway. This might take a few moments.
@@ -112,16 +111,20 @@ export function ChatContainer({
           </div>
         )}
         
-        {/* Example prompts display logic remains, uses handlePromptClick */}
-        {messages.length === 0 && processingStatus === 'completed' && (
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Example Questions</h3>
-            <div className="space-y-2">
+        {/* Example prompts section */}
+        {((processingStatus === 'idle' && messages.length === 0) || 
+          (processingStatus === 'completed' && messages.length < 3)) && (
+          // Removed mt-1, mb-4 is kept to space it from messages if they appear after.
+          // If this is the first element, parent p-4 handles top spacing.
+          // If VideoStatus is above, its mb-4/sm:mb-6 handles spacing.
+          <div className="mb-4 space-y-2"> 
+            <h3 className="text-sm font-medium text-gray-600 px-1">Try these examples:</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-1 gap-2">
               {examplePrompts.map((prompt, index) => (
                 <button
                   key={index}
                   onClick={() => handlePromptClick(prompt)}
-                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-indigo-600 hover:bg-indigo-50 transition-colors text-sm"
+                  className="w-full text-left p-2.5 rounded-lg border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-xs sm:text-sm text-gray-700 hover:text-indigo-700"
                 >
                   {prompt}
                 </button>
@@ -130,8 +133,10 @@ export function ChatContainer({
           </div>
         )}
         
-        <div className="space-y-4">
-          {/* Render messages using ChatMessage component */}
+        {/* Message rendering area */}
+        {/* Ensure there's adequate space if both VideoStatus and ExamplePrompts are shown, or if many messages exist */}
+        {/* Removed pt-2 from here; spacing is handled by margins of elements above if they are rendered. */}
+        <div className="space-y-4"> 
           {messages.map((message) => (
             <ChatMessage
               key={message.id}
@@ -162,13 +167,21 @@ export function ChatContainer({
             value={inputValue}
             onChange={(e: ChangeEvent<HTMLInputElement>) => onInputChange(e.target.value)}
             onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && !isLoading && handleInitiateSendMessage()}
-            placeholder={processingStatus === 'completed' ? "Ask a question about the video..." : (processingStatus === 'processing' ? "Processing video..." : "Please submit a video first")}
-            className="flex-1 focus:border-indigo-600 focus:ring-indigo-600"
-            disabled={isLoading || processingStatus !== 'completed'}
+            placeholder={
+              processingStatus === 'completed' 
+                ? "Ask a question about the video..." 
+                : processingStatus === 'processing' 
+                  ? "Processing video, please wait..." 
+                  : processingStatus === 'failed'
+                    ? "Video processing failed. Please try another URL."
+                    : "Submit a YouTube URL to start"
+            }
+            className="flex-1 focus:border-indigo-600 focus:ring-indigo-600 text-sm sm:text-base" // Adjusted font size
+            disabled={isLoading || (processingStatus !== 'completed' && processingStatus !== 'idle')} // Allow input if idle
           />
           <Button
             onClick={handleInitiateSendMessage}
-            disabled={isLoading || !inputValue.trim() || processingStatus !== 'completed'}
+            disabled={isLoading || !inputValue.trim() || (processingStatus !== 'completed' && processingStatus !== 'idle')} // Allow send if idle and input is present (though handleInitiateSendMessage will likely block it)
             size="icon"
             className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
