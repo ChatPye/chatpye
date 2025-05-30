@@ -16,9 +16,9 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, isOpen }) => {
   return (
     <li>
       <Link href={href} legacyBehavior>
-        <a className="flex items-center p-2 space-x-3 rounded-md hover:bg-gray-700 transition-colors duration-150">
-          {icon}
-          {isOpen && <span className="ml-2 whitespace-nowrap">{label}</span>}
+        <a className="flex items-center p-3 space-x-3 rounded-md hover:bg-gray-700/50 transition-colors duration-150">
+          <span className="text-gray-300">{icon}</span>
+          {isOpen && <span className="text-gray-200 font-medium">{label}</span>}
         </a>
       </Link>
     </li>
@@ -40,36 +40,35 @@ const AppSidebar = () => {
 
   // Adjusted icon sizes based on isOpen state for a bit more refinement
   const navItems = [
-    { href: "#", icon: <Activity size={isOpen ? 22 : 24} />, label: "Activities" }, 
-    { href: "#", icon: <Users size={isOpen ? 22 : 24} />, label: "Agents" },
-    { href: "#", icon: <BarChartBig size={isOpen ? 22 : 24} />, label: "Analytics" },
+    { href: "#", icon: <Activity size={20} />, label: "Activities" }, 
+    { href: "#", icon: <Users size={20} />, label: "Agents" },
+    { href: "#", icon: <BarChartBig size={20} />, label: "Analytics" },
   ];
 
   return (
-    // Adjusted padding and widths for smaller screens
     <div 
-      className={`flex flex-col h-screen p-2 sm:p-3 bg-gray-800 text-white shadow-lg transition-all duration-300 ease-in-out ${isOpen ? 'w-56 sm:w-60' : 'w-16 sm:w-[76px]'}`}
+      className={`flex flex-col h-screen bg-gradient-to-b from-gray-900 to-indigo-950 text-white shadow-lg transition-all duration-300 ease-in-out ${isOpen ? 'w-64' : 'w-20'}`}
     >
-      {/* Toggle Button - reduced padding for the button itself */}
-      <div className={`flex mb-3 sm:mb-4 ${isOpen ? 'justify-end' : 'justify-center'}`}>
+      {/* Toggle Button */}
+      <div className={`flex p-4 ${isOpen ? 'justify-end' : 'justify-center'}`}>
         <Button 
           onClick={toggleSidebar} 
           variant="ghost" 
-          className="text-white hover:bg-gray-700 p-1.5 sm:p-2" // Reduced padding
+          className="text-gray-300 hover:text-white hover:bg-white/10 p-2"
           aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
-          {isOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />} {/* Smaller toggle icon */}
+          {isOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
         </Button>
       </div>
       
-      {/* Navigation Links - reduced spacing for list items */}
-      <nav className="flex-grow">
-        <ul className="space-y-1.5 sm:space-y-2"> 
+      {/* Navigation Links */}
+      <nav className="flex-grow px-3">
+        <ul className="space-y-2"> 
           {navItems.map((item) => (
             <NavItem 
               key={item.label} 
               href={item.href}
-              icon={item.icon} // Pass the icon directly, size is handled in navItems definition
+              icon={item.icon}
               label={item.label}
               isOpen={isOpen} 
             />
@@ -77,14 +76,14 @@ const AppSidebar = () => {
         </ul>
       </nav>
 
-      {/* Upgrade Plan Button - reduced padding and text size */}
-      <div className="mt-auto pt-3 sm:pt-4 border-t border-gray-700">
+      {/* Upgrade Plan Button */}
+      <div className="p-4 border-t border-white/10">
         <Link href="#" legacyBehavior>
           <a 
-            className={`flex items-center p-1.5 sm:p-2 space-x-2 sm:space-x-3 rounded-md transition-colors duration-150 ${isOpen ? 'hover:bg-gray-700' : 'justify-center hover:bg-gray-700'}`}
+            className={`flex items-center p-3 space-x-3 rounded-md transition-colors duration-150 ${isOpen ? 'hover:bg-white/10' : 'justify-center hover:bg-white/10'}`}
           >
-            <ShieldCheck size={isOpen ? 22 : 24} /> {/* Icon size adjusted */}
-            {isOpen && <span className="ml-1 sm:ml-2 text-sm sm:text-base whitespace-nowrap">Upgrade Plan</span>} {/* Adjusted text size and margin */}
+            <ShieldCheck size={20} className="text-indigo-300" />
+            {isOpen && <span className="text-indigo-200 font-medium">Upgrade Plan</span>}
           </a>
         </Link>
       </div>
