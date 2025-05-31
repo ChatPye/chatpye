@@ -22,6 +22,15 @@ interface ChatMessageProps {
   message: Message
 }
 
+// Helper function to format time in MM:SS
+const formatTimeMMSS = (totalSeconds: number): string => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  const paddedMinutes = String(minutes).padStart(2, '0');
+  const paddedSeconds = String(seconds).padStart(2, '0');
+  return `${paddedMinutes}:${paddedSeconds}`;
+};
+
 // Helper function to parse message content for clickable timestamps
 const parseMessageContentWithClickableTimestamps = (content: string): Array<string | { time: number; text: string }> => {
   const segments: Array<string | { time: number; text: string }> = [];
@@ -160,7 +169,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
             onClick={() => seekTo(segment.time)}
           >
             <PlayCircle className="h-4 w-4 mr-1 inline-block" />
-            {segment.text}
+            {formatTimeMMSS(segment.time)}
           </Button>
         );
       }
