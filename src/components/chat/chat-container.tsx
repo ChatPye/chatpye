@@ -56,6 +56,14 @@ export function ChatContainer({
   processingStatus,
   processingMessage
 }: ChatContainerProps) {
+  const scrollableContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scrollableContainerRef.current) {
+      scrollableContainerRef.current.scrollTop = 0
+    }
+  }, [messages])
+
   return (
     <div className="flex h-full flex-col">
       {/* Video Status Section */}
@@ -71,7 +79,7 @@ export function ChatContainer({
       )}
 
       {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto flex flex-col-reverse">
+      <div ref={scrollableContainerRef} className="flex-1 overflow-y-auto flex flex-col-reverse">
         {messages.length === 0 ? (
           <div className="p-4 space-y-4">
             <div className="space-y-2">

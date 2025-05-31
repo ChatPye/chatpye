@@ -2,11 +2,11 @@
 
 import React, { useState, Fragment } from "react" // Added useState, Fragment
 import { cn } from "@/lib/utils"
-import { MessageSquare, User, Copy, Check, PlayCircle } from "lucide-react" // Added Copy, Check, PlayCircle
+import { MessageSquare, User, Copy, Check, PlayCircle, Share2 } from "lucide-react" // Added Copy, Check, PlayCircle, Share2
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { Button } from "@/components/ui/button"; 
-import { useToast } from "@/components/ui/use-toast"; 
+import { toast } from "sonner"; // Updated to use sonner toast
 import { useVideoPlayer } from '@/contexts/video-player-context'; // Import useVideoPlayer
 import type { Components } from 'react-markdown';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -70,24 +70,29 @@ interface CodeProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const { seekTo } = useVideoPlayer(); // Get seekTo function
-  const { toast } = useToast();
+  // const { toast } = useToast(); // useToast from sonner doesn't return an object
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false); // State for share button
 
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      toast({
-        title: "Copied!",
-        description: "Code copied to clipboard",
-      });
+      toast.success("Message copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      toast({
-        title: "Failed to copy",
-        description: "Please try again",
-        variant: "destructive",
-      });
+      toast.error("Failed to copy message. Please try again.");
+    }
+  };
+
+  const handleShare = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(`Shared: ${text}`);
+      setShared(true);
+      toast.success("Message content prepared for sharing!");
+      setTimeout(() => setShared(false), 2000);
+    } catch (err) {
+      toast.error("Failed to prepare content for sharing. Please try again.");
     }
   };
 
@@ -200,9 +205,29 @@ export function ChatMessage({ message }: ChatMessageProps) {
           {message.isUser ? (
             <div className="whitespace-pre-wrap break-words">{message.content}</div>
           ) : (
-            <div className="whitespace-pre-wrap break-words">
-              {renderAiMessage().map((item, index) => <Fragment key={index}>{item}</Fragment>)}
-            </div>
+            <>
+              <div className="whitespace-pre-wrap break-words">
+                {renderAiMessage().map((item, index) => <Fragment key={index}>{item}</Fragment>)}
+              </div>
+              <div className="mt-2 flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleCopy(message.content)}
+                  title="Copy message"
+                >
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleShare(message.content)}
+                  title="Share message"
+                >
+                  {shared ? <Check className="h-3 w-3" /> : <Share2 className="h-3 w-3" />}
+                </Button>
+              </div>
+            </>
           )}
         </div>
         <span className="text-xs text-muted-foreground">
