@@ -1,18 +1,14 @@
 "use client"
 
-import React, { useEffect, useRef, ChangeEvent, KeyboardEvent } from "react"
+import React, { useEffect, useRef } from "react"
 import { ChatMessage } from "./chat-message"
-// ChatInput is not used directly, Input and Button are used instead
-// import { ChatInput } from "./chat-input" 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { SendHorizontal, Loader2 } from "lucide-react"
+import { ChatInput } from "./chat-input"
+import { Loader2 } from "lucide-react"
 import { VideoStatus } from "@/components/video/video-status"
-// Card is not used directly
-// import { Card } from "@/components/ui/card" 
-import ReactMarkdown from 'react-markdown'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Send } from "lucide-react"
+import { User } from "firebase/auth"
 
 // Interface for messages, aligned with page.tsx and ChatTabs.tsx
 export interface Message {
@@ -32,155 +28,116 @@ const examplePrompts = [
 ]
 
 interface ChatContainerProps {
-  jobId?: string | null // Retained for potential direct use if ever needed, but primary status via props
+  jobId: string | null
+  videoId: string | null
+  currentUser: User | null
+  onSignInClick?: () => void
+  disabled?: boolean
   messages: Message[]
   inputValue: string
   onInputChange: (value: string) => void
-  onSendMessage: () => Promise<void> // This is the callback from parent (page.tsx via ChatTabs.tsx)
-  isLoading: boolean // True when AI is responding or an action is in progress
-  processingStatus: ProcessingStatus // Status of video processing
-  processingMessage?: string // Message related to video processing
-  onExamplePromptClick?: (prompt: string) => void // Handler for example prompts
+  onSendMessage: () => Promise<void>
+  isLoading: boolean
+  processingStatus: ProcessingStatus
+  processingMessage?: string
 }
 
-export function ChatContainer({ 
-  // jobId, // Not directly used for fetching status anymore
+export function ChatContainer({
+  jobId,
+  videoId,
+  currentUser,
+  onSignInClick,
+  disabled,
   messages,
   inputValue,
   onInputChange,
-  onSendMessage, // Renamed from handleSendMessage in props
+  onSendMessage,
   isLoading,
   processingStatus,
-  processingMessage,
-  onExamplePromptClick 
+  processingMessage
 }: ChatContainerProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
-
-  // Removed internal state for messages, inputValue, isLoading, processingStatus
-  // Removed useEffect for jobId based status polling
-
-  const handleInitiateSendMessage = async () => {
-    if (!inputValue.trim() || processingStatus !== 'completed' || isLoading) return;
-    // Call the onSendMessage prop passed from the parent
-    await onSendMessage();
-  }
-  
-  const handlePromptClick = (prompt: string) => {
-    if (onExamplePromptClick) {
-      onExamplePromptClick(prompt);
-    } else {
-      onInputChange(prompt); // Fallback if no specific handler
-    }
-  }
-
-  const formatMessageContent = (content: string) => {
-    // Replace timestamp patterns with formatted timestamps
-    const formattedContent = content.replace(/\[(\d+)s - (\d+)s\]/g, (_, start, end) => {
-      const formatTime = (seconds: number) => {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-      };
-      return `[${formatTime(parseInt(start))} - ${formatTime(parseInt(end))}]`;
-    });
-
-    return formattedContent;
-  };
-
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto p-4">
-        {/* VideoStatus now uses props directly */}
-        {processingStatus !== 'idle' && (
-          <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-            <VideoStatus status={processingStatus} message={processingMessage} />
-             {/* Informative text can be part of processingMessage or added here if generic */}
-            {(processingStatus === 'processing' && !processingMessage) && (
-              <p className="text-sm text-gray-500 mt-2">
-                Video analysis is underway. This might take a few moments.
-              </p>
+      {/* Video Status Section */}
+      {processingStatus !== 'idle' && (
+        <div className="flex-shrink-0 p-3 sm:p-4 border-b bg-slate-50">
+          <div className="flex items-center gap-2">
+            {processingStatus === 'processing' && (
+              <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
             )}
-            {(processingStatus === 'completed' && !processingMessage) && (
-              <p className="text-sm text-green-600 mt-2">
-                Analysis complete. You can now interact with the chat.
-              </p>
-            )}
+            <p className="text-sm text-gray-600">{processingMessage}</p>
           </div>
-        )}
-        
-        {/* Example prompts display logic remains, uses handlePromptClick */}
-        {messages.length === 0 && processingStatus === 'completed' && (
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Example Questions</h3>
+        </div>
+      )}
+
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-y-auto flex flex-col-reverse">
+        {messages.length === 0 ? (
+          <div className="p-4 space-y-4">
             <div className="space-y-2">
               {examplePrompts.map((prompt, index) => (
                 <button
                   key={index}
-                  onClick={() => handlePromptClick(prompt)}
-                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-indigo-600 hover:bg-indigo-50 transition-colors text-sm"
+                  onClick={() => onInputChange(prompt)}
+                  className="w-full p-3 text-left text-sm text-gray-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
                   {prompt}
                 </button>
               ))}
             </div>
           </div>
-        )}
-        
-        <div className="space-y-4">
-          {/* Render messages using ChatMessage component */}
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={{
-                ...message, // Pass all message properties
-                content: formatMessageContent(message.content), // Apply formatting
-                timestamp: message.timestamp || new Date().toLocaleTimeString(), // Ensure timestamp
-              }}
-            />
-          ))}
-          {/* Display "Thinking..." message based on isLoading prop */}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-indigo-50 text-indigo-600 rounded-lg p-3 flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Thinking...
+        ) : (
+          <div className="p-4 space-y-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg p-3 ${
+                    message.isUser
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-100 text-gray-900'
+                  }`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.timestamp && (
+                    <p className="text-xs mt-1 opacity-70">
+                      {message.timestamp}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Input area uses props for value, onChange, and sending messages */}
-      <div className="p-4 border-t bg-white">
+      {/* Chat Input Section */}
+      <div className="flex-shrink-0 p-4 border-t bg-white">
         <div className="flex gap-2">
           <Input
+            placeholder="Type your message..."
             value={inputValue}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => onInputChange(e.target.value)}
-            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && !isLoading && handleInitiateSendMessage()}
-            placeholder={processingStatus === 'completed' ? "Ask a question about the video..." : (processingStatus === 'processing' ? "Processing video..." : "Please submit a video first")}
-            className="flex-1 focus:border-indigo-600 focus:ring-indigo-600"
-            disabled={isLoading || processingStatus !== 'completed'}
+            onChange={(e) => onInputChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                onSendMessage()
+              }
+            }}
+            className="flex-1"
+            disabled={disabled || isLoading}
           />
           <Button
-            onClick={handleInitiateSendMessage}
-            disabled={isLoading || !inputValue.trim() || processingStatus !== 'completed'}
-            size="icon"
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            onClick={onSendMessage}
+            disabled={!inputValue.trim() || disabled || isLoading}
+            className="bg-indigo-600 hover:bg-indigo-700"
           >
-            <SendHorizontal className="h-4 w-4" />
+            <Send className="h-4 w-4" />
           </Button>
         </div>
       </div>
     </div>
   )
 }
-// Removed the direct ReactMarkdown rendering here as it's encapsulated within ChatMessage
-// ChatMessage is now expected to handle the markdown rendering.
-// If ChatMessage does not handle markdown, the ReactMarkdown logic would need to be
-// re-integrated within the messages.map loop, similar to the original code,
-// but using the message.content from the mapped messages.

@@ -4,10 +4,12 @@ import React, { useState, Fragment } from "react" // Added useState, Fragment
 import { cn } from "@/lib/utils"
 import { MessageSquare, User, Copy, Check, PlayCircle } from "lucide-react" // Added Copy, Check, PlayCircle
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter/dist/esm/styles/prism'; // Using ESM for Next.js
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { Button } from "@/components/ui/button"; 
 import { useToast } from "@/components/ui/use-toast"; 
 import { useVideoPlayer } from '@/contexts/video-player-context'; // Import useVideoPlayer
+import type { Components } from 'react-markdown';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Message {
   id: string
@@ -59,86 +61,100 @@ const parseMessageContentWithClickableTimestamps = (content: string): Array<stri
   return segments;
 };
 
+interface CodeProps {
+  node?: any
+  inline?: boolean
+  className?: string
+  children?: React.ReactNode
+}
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const { seekTo } = useVideoPlayer(); // Get seekTo function
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast({
+        title: "Copied!",
+        description: "Code copied to clipboard",
+      });
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast({
+        title: "Failed to copy",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const components: Components = {
+    code({ node, inline, className, children, ...props }: CodeProps) {
+      const match = /language-(\w+)/.exec(className || '');
+      const codeString = String(children).replace(/\n$/, '');
+
+      if (!inline && match) {
+        return (
+          <div className="relative group my-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => handleCopy(codeString)}
+            >
+              {copied ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+            <div className="rounded-md overflow-hidden">
+              <SyntaxHighlighter
+                language={match[1]}
+                style={vscDarkPlus}
+              >
+                {codeString}
+              </SyntaxHighlighter>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    },
+    p(props) { return <p className="mb-1" {...props} />; },
+    ul(props) { return <ul className="list-disc pl-5 mb-1" {...props} />; },
+    ol(props) { return <ol className="list-decimal pl-5 mb-1" {...props} />; },
+  };
 
   const renderAiMessage = () => {
     const segments = parseMessageContentWithClickableTimestamps(message.content);
     return segments.map((segment, index) => {
       if (typeof segment === 'string') {
-        // Render string segments using ReactMarkdown
         return (
           <ReactMarkdown
             key={index}
-            components={{
-              code({ node, inline, className, children, ...props }) {
-                const matchLang = /language-(\w+)/.exec(className || '');
-                const codeString = String(children).replace(/\n$/, '');
-                // eslint-disable-next-line react-hooks/rules-of-hooks
-                const [copied, setCopied] = useState(false);
-                // eslint-disable-next-line react-hooks/rules-of-hooks
-                const { toast } = useToast();
-
-                const handleCopy = () => {
-                  navigator.clipboard.writeText(codeString).then(() => {
-                    setCopied(true);
-                    toast({ title: "Copied!", description: "Code copied to clipboard." });
-                    setTimeout(() => setCopied(false), 2000);
-                  }).catch(err => {
-                    toast({ variant: "destructive", title: "Copy failed", description: "Could not copy code to clipboard." });
-                    console.error('Failed to copy code: ', err);
-                  });
-                };
-                if (!inline && matchLang) {
-                  return (
-                    <div className="relative group my-2"> {/* Added margin for spacing */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={handleCopy}
-                        aria-label="Copy code"
-                      >
-                        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                      </Button>
-                      <SyntaxHighlighter
-                        style={Prism} // Ensure Prism is defined or imported correctly if it's a specific style object
-                        language={matchLang[1]}
-                        PreTag="div"
-                        className="rounded-md text-sm" // Added text-sm for consistency
-                        {...props}
-                      >
-                        {codeString}
-                      </SyntaxHighlighter>
-                    </div>
-                  );
-                }
-                return (
-                  <code className={cn(className, "text-sm")} {...props}> {/* Added text-sm */}
-                    {children}
-                  </code>
-                );
-              },
-              // Ensure other elements like p, ul, ol also have appropriate styling if needed
-              p(props) { return <p className="mb-1" {...props} />; }, // Example: add margin to paragraphs
-              ul(props) { return <ul className="list-disc pl-5 mb-1" {...props} />; },
-              ol(props) { return <ol className="list-decimal pl-5 mb-1" {...props} />; },
-            }}
+            components={components}
           >
             {segment}
           </ReactMarkdown>
         );
       } else {
-        // Render timestamp objects as clickable buttons
         return (
           <Button
             key={index}
             variant="link"
-            className="p-0 h-auto text-sm text-indigo-600 hover:text-indigo-700 inline-block align-baseline" // Adjusted styling
+            className="p-0 h-auto text-sm text-indigo-600 hover:text-indigo-700 inline-block align-baseline"
             onClick={() => seekTo(segment.time)}
           >
-            <PlayCircle className="h-4 w-4 mr-1 inline-block" /> {/* Icon before timestamp */}
+            <PlayCircle className="h-4 w-4 mr-1 inline-block" />
             {segment.text}
           </Button>
         );
@@ -175,7 +191,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       >
         <div
           className={cn(
-            "rounded-lg px-4 py-2 text-sm max-w-full overflow-x-auto", // Added max-w-full and overflow-x-auto for content
+            "rounded-lg px-4 py-2 text-sm max-w-full overflow-x-auto",
             message.isUser
               ? "bg-primary text-primary-foreground"
               : "bg-muted"
@@ -184,9 +200,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           {message.isUser ? (
             <div className="whitespace-pre-wrap break-words">{message.content}</div>
           ) : (
-            // Render AI messages using the new segmented approach
-            // Wrap output in a div to ensure proper block layout for ReactMarkdown parts
-            <div className="whitespace-pre-wrap break-words"> 
+            <div className="whitespace-pre-wrap break-words">
               {renderAiMessage().map((item, index) => <Fragment key={index}>{item}</Fragment>)}
             </div>
           )}

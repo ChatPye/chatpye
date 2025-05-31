@@ -72,7 +72,14 @@ export async function getYouTubeTranscript(videoUrl: string): Promise<Transcript
     }
 
     // Fetch transcript
-    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
+      lang: 'en'
+    });
+    
+    if (!transcript || transcript.length === 0) {
+      console.error('No transcript found for video:', videoId);
+      return null;
+    }
     
     // Transform to our format
     return transcript.map(segment => ({
@@ -82,7 +89,16 @@ export async function getYouTubeTranscript(videoUrl: string): Promise<Transcript
     }));
   } catch (error) {
     console.error('Error fetching YouTube transcript:', error);
-    return null;
+    if (error instanceof Error) {
+      if (error.message.includes('Could not get the transcript')) {
+        throw new Error('This video does not have captions available. Please try a different video with captions enabled.');
+      } else if (error.message.includes('Video is private')) {
+        throw new Error('This video is private. Please try a public video.');
+      } else if (error.message.includes('Video is restricted')) {
+        throw new Error('This video is restricted. Please try a different video.');
+      }
+    }
+    throw new Error('Failed to fetch transcript. Please try a different video.');
   }
 }
 

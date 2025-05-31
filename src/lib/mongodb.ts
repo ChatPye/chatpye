@@ -70,10 +70,18 @@ async function connectToDatabase(): Promise<Db> {
   }
 
   client = new MongoClient(MONGODB_URI, {
-    serverApi: ServerApiVersion.v1, // Or your specific server API version
-    // Consider adding connection pool options, timeouts, etc.
-    // useNewUrlParser: true, // Deprecated
-    // useUnifiedTopology: true, // Deprecated
+    serverApi: ServerApiVersion.v1,
+    tls: true,
+    tlsAllowInvalidCertificates: false,
+    tlsAllowInvalidHostnames: false,
+    maxPoolSize: 50,
+    minPoolSize: 10,
+    maxIdleTimeMS: 60000,
+    connectTimeoutMS: 30000,
+    socketTimeoutMS: 45000,
+    retryWrites: true,
+    retryReads: true,
+    directConnection: false
   });
 
   try {
@@ -90,7 +98,6 @@ async function connectToDatabase(): Promise<Db> {
     await collections.videoJobsCollection.createIndex({ jobId: 1 }, { unique: true });
     await collections.transcriptChunksCollection.createIndex({ jobId: 1, chunkId: 1 }, { unique: true });
     await collections.transcriptChunksCollection.createIndex({ jobId: 1 }); // For fetching all chunks for a job
-    // Index for Q&A cache
     await collections.cachedVideoQACollection.createIndex(
         { jobId: 1, questionTextNormalized: 1, modelUsed: 1, cacheType: 1 },
         { name: "user_question_cache_idx" }
@@ -103,10 +110,9 @@ async function connectToDatabase(): Promise<Db> {
     return db;
   } catch (error) {
     console.error('Failed to connect to MongoDB:', error);
-    // If connection fails, subsequent calls to getDb will also fail until successful.
-    // Consider how to handle this in your application lifecycle.
-    // For now, rethrow to make it clear connection failed.
-    throw error; 
+    client = null; // Reset client on failure
+    db = null;     // Reset db on failure
+    throw error;
   }
 }
 

@@ -613,24 +613,13 @@ export default function Home() {
               </div>
 
               {/* Right Column - Chat */}
-              <div className="lg:col-span-5 xl:col-span-4 order-2"> {/* Adjusted column span */}
-                {/* The h-full or specific height for the chat card needs to be contextually aware.
-                    Given the parent main area has padding, and this is part of a grid,
-                    h-[calc(100vh-Xrem)] might need adjustment or be replaced by flex-grow properties
-                    if the parent grid row is set to stretch.
-                    For now, keeping h-[calc(100vh-12rem)] as it was, but this might need review
-                    based on how it looks with the new overall page structure and sidebar.
-                    A common pattern is for the chat card to take h-full of its grid cell,
-                    and the grid cell to stretch.
-                */}
-                <Card className="rounded-lg sm:rounded-xl overflow-hidden bg-white shadow-sm border border-slate-100 h-[calc(100vh-11rem)] sm:h-[calc(100vh-12rem)] flex flex-col"> {/* Adjusted height slightly for mobile */}
-                  {/* VideoStatus is now shown within ChatContainer */}
-                  {/* Model selection is removed */}
+              <div className="lg:col-span-5 xl:col-span-4 order-2">
+                <Card className="bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden">
                   <ChatTabs 
                     jobId={jobId}
                     videoId={videoId} 
-                    currentUser={currentUser} // Pass currentUser
-                    onSignInClick={handleOpenSignInDialog} // Pass handler
+                    currentUser={currentUser}
+                    onSignInClick={handleOpenSignInDialog}
                     disabled={!jobId && selectedModel.id !== 'gemini'} 
                     messages={messages}
                     inputValue={inputValue}

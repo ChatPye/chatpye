@@ -39,10 +39,11 @@ async function processVideo(jobId: string, youtubeUrl: string) {
     const transcript = await getYouTubeTranscript(youtubeUrl);
     
     if (!transcript || transcript.length === 0) {
+      // Instead of failing, mark as processed without transcript
       await updateVideoJob(jobId, { 
-        status: 'failed',
+        status: 'completed',
         transcriptStatus: 'not_found',
-        progress: 'No transcript found'
+        progress: 'Video processed without transcript. You can still chat about the video using Gemini.'
       });
       return;
     }
