@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { createVideoJob, updateVideoJob, createTranscriptChunks, updateTranscriptChunkEmbeddings } from '@/lib/mongodb';
-import { getYouTubeTranscript } from '@/lib/youtube';
+import { getYouTubeTranscript, extractVideoId, getVideoDetails } from '@/lib/youtube';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '@/lib/embeddings';
 
@@ -33,7 +33,32 @@ async function processChunksInBatches(chunks: any[], jobId: string, batchSize = 
 async function processVideo(jobId: string, youtubeUrl: string) {
   try {
     // Update job status to processing
-    await updateVideoJob(jobId, { status: 'processing', progress: 'Fetching transcript...' });
+    await updateVideoJob(jobId, { status: 'processing', progress: 'Checking video availability...' });
+
+    // Extract video ID
+    const videoId = extractVideoId(youtubeUrl);
+    if (!videoId) {
+      throw new Error('Invalid YouTube URL');
+    }
+
+    // Check video details first
+    try {
+      const videoDetails = await getVideoDetails(videoId);
+      await updateVideoJob(jobId, { 
+        progress: `Processing video: ${videoDetails.title || 'Untitled'}...` 
+      });
+    } catch (error) {
+      console.error('Error fetching video details:', error);
+      await updateVideoJob(jobId, { 
+        status: 'failed',
+        transcriptStatus: 'error',
+        progress: 'Could not verify video details. Please check if the video is available and public.'
+      });
+      return;
+    }
+
+    // Update status to fetching transcript
+    await updateVideoJob(jobId, { progress: 'Fetching transcript...' });
 
     // Fetch transcript
     const transcript = await getYouTubeTranscript(youtubeUrl);
@@ -47,6 +72,9 @@ async function processVideo(jobId: string, youtubeUrl: string) {
       });
       return;
     }
+
+    // Update status to processing transcript
+    await updateVideoJob(jobId, { progress: 'Processing transcript...' });
 
     // Create transcript chunks with a maximum size
     const MAX_CHUNK_SIZE = 1000; // characters
@@ -119,10 +147,26 @@ async function processVideo(jobId: string, youtubeUrl: string) {
     }
   } catch (error) {
     console.error('Error processing video:', error);
+    let errorMessage = 'Error during processing';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('captions disabled')) {
+        errorMessage = 'This video has captions disabled. Please try a different video with captions enabled.';
+      } else if (error.message.includes('private')) {
+        errorMessage = 'This video is private. Please try a public video.';
+      } else if (error.message.includes('restricted')) {
+        errorMessage = 'This video is restricted. Please try a different video.';
+      } else if (error.message.includes('not found')) {
+        errorMessage = 'Video not found. Please check the URL and try again.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+
     await updateVideoJob(jobId, {
       status: 'failed',
       transcriptStatus: 'error',
-      progress: error instanceof Error ? error.message : 'Error during processing'
+      progress: errorMessage
     });
   }
 }

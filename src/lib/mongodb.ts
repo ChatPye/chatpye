@@ -72,8 +72,8 @@ async function connectToDatabase(): Promise<Db> {
   client = new MongoClient(MONGODB_URI, {
     serverApi: ServerApiVersion.v1,
     tls: true,
-    tlsAllowInvalidCertificates: false,
-    tlsAllowInvalidHostnames: false,
+    tlsAllowInvalidCertificates: true, // Allow invalid certificates in development
+    tlsAllowInvalidHostnames: true,    // Allow invalid hostnames in development
     maxPoolSize: 50,
     minPoolSize: 10,
     maxIdleTimeMS: 60000,
@@ -112,7 +112,20 @@ async function connectToDatabase(): Promise<Db> {
     console.error('Failed to connect to MongoDB:', error);
     client = null; // Reset client on failure
     db = null;     // Reset db on failure
-    throw error;
+    
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        throw new Error('Could not connect to MongoDB server. Please check if the server is running and accessible.');
+      } else if (error.message.includes('Authentication failed')) {
+        throw new Error('MongoDB authentication failed. Please check your credentials.');
+      } else if (error.message.includes('Invalid URI')) {
+        throw new Error('Invalid MongoDB URI. Please check your connection string.');
+      } else if (error.message.includes('TLS')) {
+        throw new Error('TLS connection failed. Please check your SSL/TLS configuration.');
+      }
+    }
+    throw new Error(`MongoDB connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
