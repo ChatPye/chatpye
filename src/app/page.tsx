@@ -253,92 +253,86 @@ export default function Home() {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: userMessageContent, 
-          jobId: jobId,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessageContent,
+          jobId,
           modelId: selectedModel.id,
-          videoId: videoId
+          videoId,
         }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ errorMessage: "An unexpected API error occurred." }));
-        throw new Error(errorData.errorMessage || "API request failed");
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get response from AI');
       }
-      
-      setMessages(prev => prev.filter(m => m.id !== thinkingMessageId));
 
-      const contentType = response.headers.get("content-type");
-      let isJsonCachedResponse = false;
-      let responseData = null;
+      // Remove the thinking message
+      setMessages((prev) => prev.filter(msg => msg.id !== thinkingMessageId));
 
-      if (contentType && contentType.includes("application/json")) {
-        responseData = await response.json();
-        if (responseData.fromCache === true || responseData.stream === false) {
-          isJsonCachedResponse = true;
-        } else if (selectedModel.id !== 'gemini') {
-          isJsonCachedResponse = true; 
-        } else if (responseData.error) {
-          throw new Error(responseData.error);
-        } else {
-          console.warn("Received unexpected JSON for Gemini, expected stream or cached response.", responseData);
-          throw new Error("Unexpected response type for Gemini.");
+      // Check if the response is a stream
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/plain')) {
+        // Handle streaming response
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Failed to get response stream');
         }
-      }
 
-      if (isJsonCachedResponse && responseData) {
-        const aiMessage: Message = {
-          id: uuidv4(),
-          content: responseData.message,
+        const decoder = new TextDecoder();
+        const aiMessageId = uuidv4();
+        let accumulatedText = '';
+
+        // Add initial empty AI message
+        setMessages(prev => [...prev, {
+          id: aiMessageId,
+          content: '',
           isUser: false,
           timestamp: Date.now(),
-          fromCache: responseData.fromCache
-        };
-        setMessages(prev => [...prev, aiMessage]);
-      } else if (selectedModel.id === 'gemini' && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        const currentAiMessageId = uuidv4();
-
-        setMessages(prev => [...prev, { 
-          id: currentAiMessageId, 
-          content: "", 
-          isUser: false, 
-          timestamp: Date.now() 
         }]);
-        
-        let streamEnded = false;
+
         try {
-          while (!streamEnded) {
-            const { value, done } = await reader.read();
-            if (done) {
-              streamEnded = true;
-              break;
-            }
-            const decodedChunk = decoder.decode(value, { stream: true });
-            setMessages(prevMessages =>
-              prevMessages.map(msg =>
-                msg.id === currentAiMessageId ? { ...msg, content: msg.content + decodedChunk } : msg
-              )
-            );
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            accumulatedText += chunk;
+
+            // Update the AI message with accumulated text
+            setMessages(prev => prev.map(msg => 
+              msg.id === aiMessageId 
+                ? { ...msg, content: accumulatedText }
+                : msg
+            ));
           }
-        } catch (streamError: any) {
-          console.error("Error reading stream:", streamError);
-          toast({ variant: "destructive", title: "Stream Error", description: "Error reading AI response." });
-          setMessages(prev => prev.filter(m => m.id !== currentAiMessageId));
+        } catch (error) {
+          console.error('Error reading stream:', error);
+          throw error;
         } finally {
-          if (!streamEnded) reader.releaseLock();
+          reader.releaseLock();
         }
       } else {
-        console.error("Unhandled response type or missing body for Gemini stream.");
-        throw new Error("Failed to process AI response correctly.");
+        // Handle non-streaming response
+        const data = await response.json();
+        const aiMessage: Message = {
+          id: uuidv4(),
+          content: data.message,
+          isUser: false,
+          timestamp: Date.now(),
+          fromCache: data.fromCache,
+        };
+        setMessages((prev) => [...prev, aiMessage]);
       }
-
     } catch (error: any) {
-      console.error('Error sending message or processing response:', error);
-      toast({ variant: "destructive", title: "Error", description: error.message || "Failed to get response from AI." });
-      setMessages(prev => prev.filter(m => m.id !== thinkingMessageId));
+      console.error('Error sending message:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to get response from AI",
+      });
     } finally {
       setIsAiResponding(false);
     }
