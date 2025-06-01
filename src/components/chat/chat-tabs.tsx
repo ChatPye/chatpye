@@ -125,20 +125,22 @@ export function ChatTabs({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden">
-          <ChatContainer 
-            jobId={jobId}
-            videoId={videoId}
-            currentUser={currentUser}
-            onSignInClick={onSignInClick || (() => {})}
-            disabled={disabled || false}
-            messages={messages}
-            inputValue={inputValue}
-            onInputChange={onInputChange}
-            onSendMessage={onSendMessage}
-            isLoading={isLoading}
-            processingStatus={processingStatus}
-            processingMessage={processingMessage}
-          />
+          <div className="flex flex-col h-full">
+            <ChatContainer 
+              jobId={jobId}
+              videoId={videoId}
+              currentUser={currentUser}
+              onSignInClick={onSignInClick || (() => {})}
+              disabled={disabled || false}
+              messages={messages}
+              inputValue={inputValue}
+              onInputChange={onInputChange}
+              onSendMessage={onSendMessage}
+              isLoading={isLoading}
+              processingStatus={processingStatus}
+              processingMessage={processingMessage}
+            />
+          </div>
         </TabsContent>
         <TabsContent value="timeline" className="p-6">
           <div className="flex items-center justify-center h-full text-[#666666]">
