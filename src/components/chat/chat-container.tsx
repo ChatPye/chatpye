@@ -3,11 +3,10 @@
 import React, { useEffect, useRef } from "react"
 import { ChatMessage } from "./chat-message"
 import { ChatInput } from "./chat-input"
-import { Loader2 } from "lucide-react"
+import { Loader2, Send } from "lucide-react"
 import { VideoStatus } from "@/components/video/video-status"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Send } from "lucide-react"
 import { User } from "firebase/auth"
 import InfiniteScroll from "react-infinite-scroll-component"
 
@@ -59,19 +58,16 @@ export function ChatContainer({
 }: ChatContainerProps) {
   const scrollableContainerRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Effect to scroll to the bottom of the chat whenever messages change
   useEffect(() => {
     const container = scrollableContainerRef.current;
     if (container) {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'smooth'
-      });
+      container.scrollTop = container.scrollHeight;
     }
   }, [messages]);
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex flex-col h-[calc(100vh-200px)] max-h-[800px]">
       {/* Video Status Section */}
       {processingStatus !== 'idle' && (
         <div className="flex-shrink-0 p-3 sm:p-4 border-b bg-slate-50">
@@ -85,13 +81,11 @@ export function ChatContainer({
       )}
 
       {/* Scrollable Content Area */}
-      <div
-        id="scrollableDiv"
+      <div 
         ref={scrollableContainerRef} 
-        className="flex-1 overflow-y-auto scroll-smooth bg-slate-50"
-        style={{ display: 'flex', flexDirection: 'column-reverse' }}
+        className="flex-1 overflow-y-auto min-h-0"
       >
-        <div className="flex flex-col">
+        <div className="flex flex-col h-full">
           {messages.length === 0 ? (
             <div className="p-4 space-y-4">
               <div className="space-y-2">
@@ -113,6 +107,8 @@ export function ChatContainer({
               ))}
             </div>
           )}
+          {/* Add a div at the bottom to ensure proper scrolling */}
+          <div className="h-4" />
         </div>
       </div>
 
