@@ -56,7 +56,7 @@ interface Collections {
 
 const collections: Collections = {};
 
-async function connectToDatabase(): Promise<Db> {
+export async function connectToDatabase(): Promise<Db> {
   if (db && client) {
     // TODO: Verify client connection state if possible, e.g. client.isConnected()
     // For serverless, creating new connections per request or short-lived connections might be okay.

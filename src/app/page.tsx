@@ -30,6 +30,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import AppSidebar from "@/components/layout/AppSidebar"; // Import the new sidebar
+import { Logo } from "@/components/ui/logo"
 
 // Firebase Imports
 import { auth, googleProvider } from "@/lib/firebaseClient"
@@ -442,12 +443,10 @@ export default function Home() {
       <div className="flex-1 flex flex-col overflow-y-auto">
         {/* Navigation Bar */}
         <nav className="border-b bg-white">
-          <div className="max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-8"> {/* Reduced horizontal padding for smaller screens */}
+          <div className="max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center">
-                {/* Hamburger menu icon can be added here to toggle AppSidebar on small screens if needed */}
-                <Youtube className="h-7 w-7 sm:h-8 sm:w-8 text-black" /> {/* Slightly smaller icon on mobile */}
-                <span className="ml-2 text-lg sm:text-xl font-bold text-black">ChatPye</span> {/* Adjusted font size */}
+                <Logo />
               </div>
               <div className="flex items-center space-x-1 sm:space-x-2"> {/* Reduced space on mobile */}
                 {authLoading ? (

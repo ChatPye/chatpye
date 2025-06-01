@@ -85,12 +85,13 @@ export function ChatContainer({
       )}
 
       {/* Scrollable Content Area */}
-      <div 
+      <div
         id="scrollableDiv"
         ref={scrollableContainerRef} 
         className="flex-1 overflow-y-auto scroll-smooth bg-slate-50"
+        style={{ display: 'flex', flexDirection: 'column-reverse' }}
       >
-        <div className="flex flex-col-reverse min-h-full">
+        <div className="flex flex-col">
           {messages.length === 0 ? (
             <div className="p-4 space-y-4">
               <div className="space-y-2">

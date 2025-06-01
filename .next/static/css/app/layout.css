@@ -853,9 +853,6 @@ video {
 .min-h-\[80px\] {
   min-height: 80px;
 }
-.min-h-full {
-  min-height: 100%;
-}
 .w-1\/2 {
   width: 50%;
 }
@@ -1563,6 +1560,9 @@ video {
 }
 .ease-in-out {
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+.running {
+  animation-play-state: running;
 }
 
 :root {

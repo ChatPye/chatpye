@@ -1,13 +1,12 @@
 import { MongoClient, MongoError } from 'mongodb'
-import clientPromise from './mongodb'
+import { connectToDatabase, closeDatabaseConnection } from './mongodb'
 
 export async function testConnection() {
   try {
-    const client = await clientPromise
+    const db = await connectToDatabase()
     console.log('Successfully connected to MongoDB!')
     
     // Test database operations
-    const db = client.db('chatpye')
     const result = await db.collection('test').insertOne({
       test: 'connection',
       timestamp: new Date()
@@ -17,6 +16,9 @@ export async function testConnection() {
     
     // Clean up test document
     await db.collection('test').deleteOne({ _id: result.insertedId })
+    
+    // Close the connection
+    await closeDatabaseConnection()
     
     return true
   } catch (error) {
