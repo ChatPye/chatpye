@@ -34,6 +34,13 @@ const nextConfig = {
       },
     ]
   },
+  output: 'standalone',
+  images: {
+    domains: ['i.ytimg.com', 'img.youtube.com', 'lh3.googleusercontent.com', 'firebasestorage.googleapis.com'],
+  },
+  experimental: {
+    serverActions: true,
+  },
 }
 
 module.exports = nextConfig 
