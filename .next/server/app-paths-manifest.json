@@ -1,7 +1,7 @@
 {
   "/page": "app/page.js",
-  "/api/video/process/route": "app/api/video/process/route.js",
-  "/api/chat/route": "app/api/chat/route.js",
   "/api/video-info/route": "app/api/video-info/route.js",
-  "/api/video/status/[jobId]/route": "app/api/video/status/[jobId]/route.js"
+  "/api/video/process/route": "app/api/video/process/route.js",
+  "/api/video/status/[jobId]/route": "app/api/video/status/[jobId]/route.js",
+  "/api/chat/route": "app/api/chat/route.js"
 }

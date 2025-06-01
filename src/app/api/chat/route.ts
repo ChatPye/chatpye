@@ -64,11 +64,27 @@ async function processStreamForResponseAndCache(
 
 export async function POST(request: Request) {
   try {
-    const { message, jobId, modelId } = await request.json()
+    const { message, jobId, modelId, videoId } = await request.json()
 
-    if (!message || !jobId || !modelId) {
+    if (!message || !modelId) {
       return NextResponse.json(
-        { error: "Message, jobId, and modelId are required", stream: false, fromCache: false },
+        { error: "Message and modelId are required", stream: false, fromCache: false },
+        { status: 400 }
+      )
+    }
+
+    // For non-Gemini models, jobId is required
+    if (modelId !== "gemini" && !jobId) {
+      return NextResponse.json(
+        { error: "jobId is required for non-Gemini models", stream: false, fromCache: false },
+        { status: 400 }
+      )
+    }
+
+    // For Gemini model, either jobId or videoId is required
+    if (modelId === "gemini" && !jobId && !videoId) {
+      return NextResponse.json(
+        { error: "Either jobId or videoId is required for Gemini model", stream: false, fromCache: false },
         { status: 400 }
       )
     }
@@ -128,7 +144,7 @@ export async function POST(request: Request) {
 
       // 4. Generate response using RAG-based approach
       try {
-        const liveStreamGenerator = geminiService.generateAnswer(serviceContext, message);
+        const liveStreamGenerator = geminiService.generateAnswer(serviceContext, message, videoId);
         
         const streamForClient = await processStreamForResponseAndCache(
           liveStreamGenerator,

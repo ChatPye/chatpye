@@ -46,7 +46,7 @@ interface Message {
   id: string
   content: string
   isUser: boolean
-  timestamp?: string
+  timestamp: number
   fromCache?: boolean
 }
 
@@ -198,13 +198,35 @@ export default function Home() {
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
-    if (!jobId && selectedModel.id !== 'gemini') {
-        toast({ variant: "destructive", title: "Video Not Ready", description: "Please wait for video processing to complete or select a processed video." });
-        return;
+
+    // For non-Gemini models, require jobId and completed processing
+    if (selectedModel.id !== 'gemini' && (!jobId || processingStatus !== 'completed')) {
+      toast({ 
+        variant: "destructive", 
+        title: "Video Not Ready", 
+        description: "Please wait for video processing to complete before chatting." 
+      });
+      return;
     }
-    if (!jobId && selectedModel.id === 'gemini' && !videoId) {
-        toast({ variant: "destructive", title: "No Video", description: "Please submit a YouTube URL first to chat with Gemini." });
+
+    // For Gemini model, require either jobId (with completed processing) or videoId
+    if (selectedModel.id === 'gemini') {
+      if (!jobId && !videoId) {
+        toast({ 
+          variant: "destructive", 
+          title: "No Video", 
+          description: "Please submit a YouTube URL first to chat with Gemini." 
+        });
         return;
+      }
+      if (jobId && processingStatus !== 'completed') {
+        toast({ 
+          variant: "destructive", 
+          title: "Video Processing", 
+          description: "Please wait for video processing to complete for better responses." 
+        });
+        return;
+      }
     }
 
     const userMessageContent = inputValue;
@@ -212,7 +234,7 @@ export default function Home() {
       id: uuidv4(),
       content: userMessageContent,
       isUser: true,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: Date.now(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -224,7 +246,7 @@ export default function Home() {
       id: thinkingMessageId,
       content: "AI is thinking...",
       isUser: false,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: Date.now(),
     };
     setMessages(prev => [...prev, thinkingMessage]);
 
@@ -233,11 +255,11 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            message: userMessageContent, 
-            jobId: jobId,
-            modelId: selectedModel.id,
-            videoId: videoId
-         }),
+          message: userMessageContent, 
+          jobId: jobId,
+          modelId: selectedModel.id,
+          videoId: videoId
+        }),
       });
 
       if (!response.ok) {
@@ -258,7 +280,7 @@ export default function Home() {
         } else if (selectedModel.id !== 'gemini') {
           isJsonCachedResponse = true; 
         } else if (responseData.error) {
-            throw new Error(responseData.error);
+          throw new Error(responseData.error);
         } else {
           console.warn("Received unexpected JSON for Gemini, expected stream or cached response.", responseData);
           throw new Error("Unexpected response type for Gemini.");
@@ -270,7 +292,7 @@ export default function Home() {
           id: uuidv4(),
           content: responseData.message,
           isUser: false,
-          timestamp: new Date().toLocaleTimeString(),
+          timestamp: Date.now(),
           fromCache: responseData.fromCache
         };
         setMessages(prev => [...prev, aiMessage]);
@@ -280,33 +302,33 @@ export default function Home() {
         const currentAiMessageId = uuidv4();
 
         setMessages(prev => [...prev, { 
-            id: currentAiMessageId, 
-            content: "", 
-            isUser: false, 
-            timestamp: new Date().toLocaleTimeString() 
+          id: currentAiMessageId, 
+          content: "", 
+          isUser: false, 
+          timestamp: Date.now() 
         }]);
         
         let streamEnded = false;
         try {
-            while (!streamEnded) {
-              const { value, done } = await reader.read();
-              if (done) {
-                streamEnded = true;
-                break;
-              }
-              const decodedChunk = decoder.decode(value, { stream: true });
-              setMessages(prevMessages =>
-                prevMessages.map(msg =>
-                  msg.id === currentAiMessageId ? { ...msg, content: msg.content + decodedChunk } : msg
-                )
-              );
+          while (!streamEnded) {
+            const { value, done } = await reader.read();
+            if (done) {
+              streamEnded = true;
+              break;
             }
+            const decodedChunk = decoder.decode(value, { stream: true });
+            setMessages(prevMessages =>
+              prevMessages.map(msg =>
+                msg.id === currentAiMessageId ? { ...msg, content: msg.content + decodedChunk } : msg
+              )
+            );
+          }
         } catch (streamError: any) {
-            console.error("Error reading stream:", streamError);
-            toast({ variant: "destructive", title: "Stream Error", description: "Error reading AI response." });
-            setMessages(prev => prev.filter(m => m.id !== currentAiMessageId));
+          console.error("Error reading stream:", streamError);
+          toast({ variant: "destructive", title: "Stream Error", description: "Error reading AI response." });
+          setMessages(prev => prev.filter(m => m.id !== currentAiMessageId));
         } finally {
-            if (!streamEnded) reader.releaseLock();
+          if (!streamEnded) reader.releaseLock();
         }
       } else {
         console.error("Unhandled response type or missing body for Gemini stream.");

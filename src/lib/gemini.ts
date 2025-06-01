@@ -32,8 +32,16 @@ export class GeminiService {
   }
 
   // RAG-based answer generation (streaming) - Retained for potential non-YouTube file use or specific scenarios
-  async * generateAnswer(context: Array<{ text: string; startTimestamp: string; endTimestamp: string }>, question: string): AsyncGenerator<string, void, undefined> {
+  async * generateAnswer(context: Array<{ text: string; startTimestamp: string; endTimestamp: string }>, question: string, videoId?: string): AsyncGenerator<string, void, undefined> {
     console.log("Gemini RAG: Generating answer for question:", question.substring(0, 50) + "..."); // Log snippet
+    
+    // If we have a videoId but no context, use the direct YouTube URL approach
+    if (videoId && (!context || context.length === 0)) {
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      yield* this.generateAnswerFromYouTubeUrlDirectly(youtubeUrl, question);
+      return;
+    }
+
     const contextString = context
       .map(c => `[${c.startTimestamp}s - ${c.endTimestamp}s] ${c.text}`)
       .join('\n\n');

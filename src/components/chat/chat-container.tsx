@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Send } from "lucide-react"
 import { User } from "firebase/auth"
+import InfiniteScroll from "react-infinite-scroll-component"
 
 // Interface for messages, aligned with page.tsx and ChatTabs.tsx
 export interface Message {
   id: string
   content: string
   isUser: boolean
-  timestamp?: string 
+  timestamp: number
   fromCache?: boolean
 }
 
@@ -58,14 +59,19 @@ export function ChatContainer({
 }: ChatContainerProps) {
   const scrollableContainerRef = useRef<HTMLDivElement>(null)
 
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (scrollableContainerRef.current) {
-      scrollableContainerRef.current.scrollTop = 0
+    const container = scrollableContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
     }
-  }, [messages])
+  }, [messages]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-white">
       {/* Video Status Section */}
       {processingStatus !== 'idle' && (
         <div className="flex-shrink-0 p-3 sm:p-4 border-b bg-slate-50">
@@ -79,46 +85,34 @@ export function ChatContainer({
       )}
 
       {/* Scrollable Content Area */}
-      <div ref={scrollableContainerRef} className="flex-1 overflow-y-auto flex flex-col-reverse">
-        {messages.length === 0 ? (
-          <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              {examplePrompts.map((prompt, index) => (
-                <button
-                  key={index}
-                  onClick={() => onInputChange(prompt)}
-                  className="w-full p-3 text-left text-sm text-gray-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                >
-                  {prompt}
-                </button>
+      <div 
+        id="scrollableDiv"
+        ref={scrollableContainerRef} 
+        className="flex-1 overflow-y-auto scroll-smooth bg-slate-50"
+      >
+        <div className="flex flex-col-reverse min-h-full">
+          {messages.length === 0 ? (
+            <div className="p-4 space-y-4">
+              <div className="space-y-2">
+                {examplePrompts.map((prompt, index) => (
+                  <button
+                    key={index}
+                    onClick={() => onInputChange(prompt)}
+                    className="w-full p-3 text-left text-sm text-gray-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 space-y-4">
+              {messages.map((message) => (
+                <ChatMessage key={message.id} message={message} />
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="p-4 space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.isUser
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-900'
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  {message.timestamp && (
-                    <p className="text-xs mt-1 opacity-70">
-                      {message.timestamp}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Chat Input Section */}

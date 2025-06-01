@@ -15,28 +15,33 @@ interface Message {
   id: string
   content: string
   isUser: boolean
-  timestamp: string
+  timestamp: number
 }
 
 interface ChatMessageProps {
   message: Message
 }
 
-// Helper function to format time in MM:SS
-const formatTimeMMSS = (totalSeconds: number): string => {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const paddedMinutes = String(minutes).padStart(2, '0');
-  const paddedSeconds = String(seconds).padStart(2, '0');
-  return `${paddedMinutes}:${paddedSeconds}`;
+// Helper function to format time in HH:MM
+const formatTimeMMSS = (timestamp: number): string => {
+  if (isNaN(timestamp) || timestamp < 0) {
+    // Return current time if timestamp is invalid
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+  const date = new Date(timestamp);
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
 // Helper function to parse message content for clickable timestamps
 const parseMessageContentWithClickableTimestamps = (content: string): Array<string | { time: number; text: string }> => {
   const segments: Array<string | { time: number; text: string }> = [];
-  // Regex to find timestamps like [HH:MM:SS], [MM:SS], [M:SS], [SSs], [S.sss], [S.ss], [S.s], [Ss]
-  // It also captures HH, MM, SS, and fractional seconds separately.
-  const regex = /\[(?:(\d{1,2}):)?(\d{1,2}):(\d{1,2})\]|\[(\d+\.?\d*)s\]/g;
+  // Updated regex to handle [MM:SS] format
+  const regex = /\[(\d+):(\d+)(?:\.\d+)?\]/g;
   let lastIndex = 0;
   let match;
 
@@ -49,15 +54,11 @@ const parseMessageContentWithClickableTimestamps = (content: string): Array<stri
       segments.push(content.substring(lastIndex, match.index));
     }
 
-    if (match[1] !== undefined || match[2] !== undefined || match[3] !== undefined) { // Format [HH:MM:SS] or [MM:SS]
-      const hours = match[1] ? parseInt(match[1], 10) : 0;
-      const minutes = parseInt(match[2], 10);
-      const seconds = parseInt(match[3], 10);
-      timeInSeconds = (hours * 3600) + (minutes * 60) + seconds;
-    } else if (match[4] !== undefined) { // Format [SSs] or [S.sss]
-      timeInSeconds = parseFloat(match[4]);
-    }
-
+    // Parse MM:SS format
+    const minutes = parseInt(match[1], 10);
+    const seconds = parseInt(match[2], 10);
+    timeInSeconds = minutes * 60 + seconds;
+    
     segments.push({ time: timeInSeconds, text: fullMatchText });
     lastIndex = regex.lastIndex;
   }
@@ -70,6 +71,13 @@ const parseMessageContentWithClickableTimestamps = (content: string): Array<stri
   return segments;
 };
 
+// Helper function to parse timestamp string to seconds
+const parseTimestampToSeconds = (timestamp: string): number => {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return 0;
+  return Math.floor(date.getTime() / 1000);
+};
+
 interface CodeProps {
   node?: any
   inline?: boolean
@@ -78,173 +86,127 @@ interface CodeProps {
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
-  const { seekTo } = useVideoPlayer(); // Get seekTo function
-  // const { toast } = useToast(); // useToast from sonner doesn't return an object
-  const [copied, setCopied] = useState(false);
-  const [shared, setShared] = useState(false); // State for share button
+  const [isCopied, setIsCopied] = useState(false);
+  const [isShared, setIsShared] = useState(false);
+  const { seekTo } = useVideoPlayer();
 
-  const handleCopy = async (text: string) => {
+  const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
+      await navigator.clipboard.writeText(message.content);
+      setIsCopied(true);
       toast.success("Message copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      toast.error("Failed to copy message. Please try again.");
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (error) {
+      toast.error("Failed to copy message");
     }
   };
 
-  const handleShare = async (text: string) => {
+  const handleShare = async () => {
     try {
-      await navigator.clipboard.writeText(`Shared: ${text}`);
-      setShared(true);
-      toast.success("Message content prepared for sharing!");
-      setTimeout(() => setShared(false), 2000);
-    } catch (err) {
-      toast.error("Failed to prepare content for sharing. Please try again.");
+      await navigator.share({
+        title: "Shared from ChatPye",
+        text: message.content,
+        url: window.location.href,
+      });
+      setIsShared(true);
+      toast.success("Message shared successfully");
+      setTimeout(() => setIsShared(false), 2000);
+    } catch (error) {
+      toast.error("Failed to share message");
     }
   };
 
-  const components: Components = {
-    code({ node, inline, className, children, ...props }: CodeProps) {
-      const match = /language-(\w+)/.exec(className || '');
-      const codeString = String(children).replace(/\n$/, '');
-
-      if (!inline && match) {
-        return (
-          <div className="relative group my-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={() => handleCopy(codeString)}
-            >
-              {copied ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-            <div className="rounded-md overflow-hidden">
-              <SyntaxHighlighter
-                language={match[1]}
-                style={vscDarkPlus}
-              >
-                {codeString}
-              </SyntaxHighlighter>
-            </div>
-          </div>
-        );
-      }
-
-      return (
-        <code className={className} {...props}>
-          {children}
-        </code>
-      );
-    },
-    p(props) { return <p className="mb-1" {...props} />; },
-    ul(props) { return <ul className="list-disc pl-5 mb-1" {...props} />; },
-    ol(props) { return <ol className="list-decimal pl-5 mb-1" {...props} />; },
-  };
-
-  const renderAiMessage = () => {
-    const segments = parseMessageContentWithClickableTimestamps(message.content);
-    return segments.map((segment, index) => {
-      if (typeof segment === 'string') {
-        return (
-          <ReactMarkdown
-            key={index}
-            components={components}
-          >
-            {segment}
-          </ReactMarkdown>
-        );
-      } else {
-        return (
-          <Button
-            key={index}
-            variant="link"
-            className="p-0 h-auto text-sm text-indigo-600 hover:text-indigo-700 inline-block align-baseline"
-            onClick={() => seekTo(segment.time)}
-          >
-            <PlayCircle className="h-4 w-4 mr-1 inline-block" />
-            {formatTimeMMSS(segment.time)}
-          </Button>
-        );
-      }
-    });
-  };
+  const formattedTime = formatTimeMMSS(message.timestamp || 0);
 
   return (
     <div
-      className={cn(
-        "flex items-start gap-3",
-        message.isUser ? "flex-row-reverse" : "flex-row"
-      )}
+      className={`flex ${
+        message.isUser ? "justify-end" : "justify-start"
+      } mb-4`}
     >
       <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md border shadow",
+        className={`max-w-[80%] rounded-lg p-4 ${
           message.isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted"
-        )}
+            ? "bg-[#1e293b] text-white"
+            : "bg-white border border-slate-200"
+        }`}
       >
-        {message.isUser ? (
-          <User className="h-4 w-4" />
-        ) : (
-          <MessageSquare className="h-4 w-4" />
-        )}
-      </div>
-      <div
-        className={cn(
-          "flex flex-col gap-1",
-          message.isUser ? "items-end" : "items-start"
-        )}
-      >
-        <div
-          className={cn(
-            "rounded-lg px-4 py-2 text-sm max-w-full overflow-x-auto",
-            message.isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted"
+        <div className="flex items-start gap-2">
+          {!message.isUser && (
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                <MessageSquare className="w-4 h-4 text-slate-600" />
+              </div>
+            </div>
           )}
-        >
-          {message.isUser ? (
-            <div className="whitespace-pre-wrap break-words">{message.content}</div>
-          ) : (
-            <>
-              <div className="whitespace-pre-wrap break-words">
-                {renderAiMessage().map((item, index) => <Fragment key={index}>{item}</Fragment>)}
+          <div className="flex-1">
+            <div className="prose prose-sm max-w-none">
+              <ReactMarkdown
+                components={{
+                  code: ({ node, className, children, ...props }: any) => {
+                    const match = /language-(\w+)/.exec(className || "");
+                    return !match ? (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    ) : (
+                      <SyntaxHighlighter
+                        language={match[1]}
+                        style={vscDarkPlus}
+                        PreTag="div"
+                      >
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    );
+                  },
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className={`text-xs ${message.isUser ? "text-slate-400" : "text-gray-500"}`}>
+                {formattedTime}
+              </span>
+              {!message.isUser && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="h-8 w-8 p-0"
+                  >
+                    {isCopied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleShare}
+                    className="h-8 w-8 p-0"
+                  >
+                    {isShared ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Share2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          {message.isUser && (
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
+                <User className="w-4 h-4 text-slate-300" />
               </div>
-              <div className="mt-2 flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleCopy(message.content)}
-                  title="Copy message"
-                >
-                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleShare(message.content)}
-                  title="Share message"
-                >
-                  {shared ? <Check className="h-3 w-3" /> : <Share2 className="h-3 w-3" />}
-                </Button>
-              </div>
-            </>
+            </div>
           )}
         </div>
-        <span className="text-xs text-muted-foreground">
-          {message.timestamp && !isNaN(new Date(message.timestamp).getTime()) 
-            ? new Date(message.timestamp).toLocaleTimeString() 
-            : new Date().toLocaleTimeString()} 
-        </span>
       </div>
     </div>
-  )
+  );
 }

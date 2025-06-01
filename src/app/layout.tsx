@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { ChatProvider } from "@/contexts/chat-context"
 import { VideoPlayerProvider } from "@/contexts/video-player-context" // Import the new provider
+import { Toaster } from 'sonner';
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -22,6 +23,7 @@ export default function RootLayout({
         <ChatProvider>
           <VideoPlayerProvider>{children}</VideoPlayerProvider>
         </ChatProvider>
+        <Toaster />
       </body>
     </html>
   )
