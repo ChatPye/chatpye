@@ -5,6 +5,12 @@ import { openAIService } from '@/lib/openai';
 import { anthropicService } from '@/lib/anthropic';
 import { geminiService } from '@/lib/gemini';
 
+interface ServiceContext {
+  text: string;
+  startTimestamp: string;
+  endTimestamp: string;
+}
+
 // Helper to normalize questions for consistent cache keys
 function normalizeQuestion(question: string): string {
   return question.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -120,54 +126,39 @@ export async function POST(request: Request) {
 
       // 2. Get transcript chunks for RAG-based approach
       const chunks = await getTranscriptChunks(jobId);
-      if (!chunks || chunks.length === 0) {
-        return NextResponse.json(
-          { error: "No transcript chunks found for this video.", stream: false, fromCache: false },
-          { status: 404 }
-        );
+      let serviceContext: ServiceContext[] = [];
+
+      if (chunks && chunks.length > 0) {
+        // If we have chunks, use RAG
+        const relevantChunks = await findRelevantChunks(message, chunks);
+        serviceContext = relevantChunks.map(chunk => ({
+          text: chunk.textContent,
+          startTimestamp: chunk.startTimestamp.toString(),
+          endTimestamp: chunk.endTimestamp.toString(),
+        }));
       }
 
-      // 3. Find relevant chunks for the question
-      const relevantChunks = await findRelevantChunks(message, chunks);
-      const serviceContext = relevantChunks.map(chunk => ({
-        text: chunk.textContent,
-        startTimestamp: chunk.startTimestamp.toString(),
-        endTimestamp: chunk.endTimestamp.toString(),
-      }));
+      // 3. Generate answer using Gemini
+      const geminiGenerator = geminiService.generateAnswer(
+        serviceContext,
+        message,
+        jobId
+      );
 
-      if (!serviceContext || serviceContext.length === 0) {
-        return NextResponse.json(
-          { error: "Could not derive relevant context for this question from the video transcript." },
-          { status: 404 }
-        );
+      // Collect the response from the generator
+      let geminiResponse = '';
+      for await (const chunk of geminiGenerator) {
+        geminiResponse += chunk;
       }
 
-      // 4. Generate response using RAG-based approach
-      try {
-        const liveStreamGenerator = geminiService.generateAnswer(serviceContext, message, videoId);
-        
-        const streamForClient = await processStreamForResponseAndCache(
-          liveStreamGenerator,
-          async (fullText) => {
-            if (fullText && fullText.trim().length > 0) {
-              await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, fullText, 'user_question');
-              console.log(`Gemini response for JobId '${jobId}', Question '${normalizedQuestion}' cached successfully.`);
-            }
-          }
-        );
-        return new Response(streamForClient, {
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Transfer-Encoding': 'chunked',
-          },
-        });
-      } catch (error: any) {
-        console.error(`Error during Gemini stream setup or service call (JobId: ${jobId}):`, error.message, error.stack);
-        return NextResponse.json(
-          { error: "Failed to get or start Gemini stream.", errorMessage: error.message, stream: false, fromCache: false },
-          { status: 500 }
-        );
-      }
+      // 4. Cache the response
+      await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, geminiResponse);
+
+      return NextResponse.json({ 
+        message: geminiResponse, 
+        fromCache: false, 
+        stream: false 
+      });
     } 
     // --- OpenAI / Anthropic Models Path (RAG-based, Non-Streaming for now) ---
     // These paths will require transcript chunks (serviceContext)

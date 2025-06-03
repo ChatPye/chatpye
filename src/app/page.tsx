@@ -29,7 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import AppSidebar from "@/components/layout/AppSidebar"; // Import the new sidebar
+import CollapsibleSidebar from "@/components/layout/CollapsibleSidebar"; // Import the new sidebar
 import { Logo } from "@/components/ui/logo"
 
 // Firebase Imports
@@ -439,7 +439,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar />
+      <CollapsibleSidebar />
       <div className="flex-1 flex flex-col overflow-y-auto">
         {/* Navigation Bar */}
         <nav className="border-b bg-white">

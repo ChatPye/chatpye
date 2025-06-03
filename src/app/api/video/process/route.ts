@@ -4,6 +4,7 @@ import { createVideoJob, updateVideoJob, createTranscriptChunks, updateTranscrip
 import { getYouTubeTranscript, extractVideoId, getVideoDetails } from '@/lib/youtube';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '@/lib/embeddings';
+import { getCollections } from '@/lib/mongodb';
 
 // Initialize Google AI
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY || '');
@@ -57,23 +58,26 @@ async function processVideo(jobId: string, youtubeUrl: string) {
       return;
     }
 
-    // Update status to fetching transcript
-    await updateVideoJob(jobId, { progress: 'Fetching transcript...' });
+    // Try to fetch transcript, but don't fail if it's not available
+    let transcript = null;
+    try {
+      transcript = await getYouTubeTranscript(youtubeUrl);
+    } catch (error) {
+      console.log('No transcript available, will use Gemini directly:', error);
+      // Continue processing without transcript
+    }
 
-    // Fetch transcript
-    const transcript = await getYouTubeTranscript(youtubeUrl);
-    
     if (!transcript || transcript.length === 0) {
-      // Instead of failing, mark as processed without transcript
+      // Mark as completed without transcript - we'll use Gemini directly
       await updateVideoJob(jobId, { 
         status: 'completed',
         transcriptStatus: 'not_found',
-        progress: 'Video processed without transcript. You can still chat about the video using Gemini.'
+        progress: 'Video processed. You can now chat about the video using Gemini.'
       });
       return;
     }
 
-    // Update status to processing transcript
+    // If we have a transcript, process it
     await updateVideoJob(jobId, { progress: 'Processing transcript...' });
 
     // Create transcript chunks with a maximum size
@@ -123,26 +127,37 @@ async function processVideo(jobId: string, youtubeUrl: string) {
       });
     }
 
-    // Only process if we have valid chunks
+    // Only process chunks if we have them
     if (chunks.length > 0) {
       // Store transcript chunks
       await updateVideoJob(jobId, { progress: 'Storing transcript chunks...' });
-      await createTranscriptChunks(chunks);
+      try {
+        await createTranscriptChunks(chunks);
 
-      // Process chunks in batches
-      await processChunksInBatches(chunks, jobId);
+        // Process chunks in batches
+        await processChunksInBatches(chunks, jobId);
 
-      // Update job status
+        // Update job status
+        await updateVideoJob(jobId, {
+          status: 'completed',
+          transcriptStatus: 'found',
+          progress: 'Processing complete'
+        });
+      } catch (error) {
+        console.error('Error storing transcript chunks:', error);
+        await updateVideoJob(jobId, {
+          status: 'failed',
+          transcriptStatus: 'error',
+          progress: 'Failed to store transcript chunks'
+        });
+        throw error;
+      }
+    } else {
+      // If no chunks were created, still mark as completed
       await updateVideoJob(jobId, {
         status: 'completed',
-        transcriptStatus: 'found',
-        progress: 'Processing complete'
-      });
-    } else {
-      await updateVideoJob(jobId, {
-        status: 'failed',
         transcriptStatus: 'not_found',
-        progress: 'No valid transcript chunks found'
+        progress: 'Video processed. You can now chat about the video using Gemini.'
       });
     }
   } catch (error) {
@@ -150,9 +165,7 @@ async function processVideo(jobId: string, youtubeUrl: string) {
     let errorMessage = 'Error during processing';
     
     if (error instanceof Error) {
-      if (error.message.includes('captions disabled')) {
-        errorMessage = 'This video has captions disabled. Please try a different video with captions enabled.';
-      } else if (error.message.includes('private')) {
+      if (error.message.includes('private')) {
         errorMessage = 'This video is private. Please try a public video.';
       } else if (error.message.includes('restricted')) {
         errorMessage = 'This video is restricted. Please try a different video.';
@@ -173,7 +186,7 @@ async function processVideo(jobId: string, youtubeUrl: string) {
 
 export async function POST(request: Request) {
   try {
-    const { youtubeUrl } = await request.json();
+    const { youtubeUrl, testMode = false } = await request.json();
     
     if (!youtubeUrl) {
       return NextResponse.json(
@@ -182,7 +195,85 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate a unique job ID
+    // Add test mode logging
+    if (testMode) {
+      console.log('Running in test mode');
+      console.log('Input URL:', youtubeUrl);
+    }
+
+    // Extract video ID
+    const videoId = extractVideoId(youtubeUrl);
+    if (!videoId) {
+      return NextResponse.json(
+        { error: 'Invalid YouTube URL' },
+        { status: 400 }
+      );
+    }
+
+    if (testMode) {
+      console.log('Extracted video ID:', videoId);
+    }
+
+    // Check if this video has been processed before
+    const collections = await getCollections();
+    if (!collections.videoJobsCollection || !collections.transcriptChunksCollection) {
+      throw new Error('Database collections not initialized');
+    }
+
+    if (testMode) {
+      console.log('Checking for existing job...');
+    }
+
+    const existingJob = await collections.videoJobsCollection.findOne({ 
+      youtubeUrl,
+      status: 'completed',
+      transcriptStatus: 'found'
+    });
+
+    if (testMode) {
+      console.log('Existing job found:', existingJob ? 'Yes' : 'No');
+    }
+
+    if (existingJob) {
+      // If we have an existing completed job with transcript, reuse it
+      const existingChunks = await collections.transcriptChunksCollection.find({ jobId: existingJob.jobId }).toArray();
+      if (existingChunks && existingChunks.length > 0) {
+        // Create a new job that references the existing chunks
+        const newJobId = uuidv4();
+        await createVideoJob({
+          jobId: newJobId,
+          youtubeUrl,
+          status: 'completed',
+          transcriptStatus: 'found',
+          progress: 'Using previously processed transcript'
+        });
+
+        // Copy existing chunks with new jobId
+        const newChunks = existingChunks.map((chunk, index) => ({
+          ...chunk,
+          _id: undefined, // Let MongoDB generate new _id
+          jobId: newJobId,
+          chunkId: `${newJobId}-${index}`, // Use sequential index instead of reusing the old chunk number
+          createdAt: new Date()
+        }));
+
+        try {
+          await createTranscriptChunks(newChunks);
+          return NextResponse.json({
+            status: 'success',
+            message: 'Video processing completed (reused existing transcript)',
+            jobId: newJobId
+          });
+        } catch (error) {
+          console.error('Error creating transcript chunks:', error);
+          // If chunk creation fails, delete the job and throw error
+          await collections.videoJobsCollection.deleteOne({ jobId: newJobId });
+          throw new Error('Failed to create transcript chunks');
+        }
+      }
+    }
+
+    // If no existing job or chunks found, proceed with normal processing
     const jobId = uuidv4();
 
     // Create initial job record

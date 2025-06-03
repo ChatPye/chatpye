@@ -1,7 +1,7 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
-import { Clock, ThumbsUp, Eye } from "lucide-react"
+import { Clock, ThumbsUp, Eye, Calendar } from "lucide-react"
 import { useState, useEffect } from "react"
 
 interface VideoInfoProps {
@@ -54,10 +54,19 @@ export function VideoInfo({ videoId }: VideoInfoProps) {
       </h2>
       
       <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="flex mb-2">
-          <span className="text-[#666666] font-medium">
-            {videoInfo.views} views - {videoInfo.publishedAt}
-          </span>
+        <div className="flex items-center gap-4 mb-3">
+          <div className="flex items-center gap-1 text-[#666666]">
+            <Eye className="h-4 w-4" />
+            <span>{videoInfo.views} views</span>
+          </div>
+          <div className="flex items-center gap-1 text-[#666666]">
+            <Clock className="h-4 w-4" />
+            <span>{videoInfo.duration}</span>
+          </div>
+          <div className="flex items-center gap-1 text-[#666666]">
+            <Calendar className="h-4 w-4" />
+            <span>{videoInfo.publishedAt}</span>
+          </div>
         </div>
         <p className="text-sm text-[#666666] line-clamp-3">
           {videoInfo.description}

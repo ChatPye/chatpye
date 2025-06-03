@@ -125,11 +125,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
       } mb-4`}
     >
       <div
-        className={`max-w-[80%] rounded-lg p-4 ${
+        className={`${
           message.isUser
-            ? "bg-[#1e293b] text-white"
-            : "bg-white border border-slate-200"
-        }`}
+            ? "max-w-[80%] bg-[#1e293b] text-white"
+            : "w-full bg-white border border-slate-200"
+        } rounded-lg p-4`}
       >
         <div className="flex items-start gap-2">
           {!message.isUser && (
@@ -164,7 +164,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 {message.content}
               </ReactMarkdown>
             </div>
-            <div className="mt-2 flex items-center justify-between">
+            
+            <div className="flex items-center justify-between mt-2">
               <span className={`text-xs ${message.isUser ? "text-slate-400" : "text-gray-500"}`}>
                 {formattedTime}
               </span>

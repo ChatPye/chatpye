@@ -185,10 +185,23 @@ export async function createTranscriptChunks(chunksData: TranscriptChunk[]): Pro
   if (chunksData.length === 0) return;
 
   const chunksToInsert = chunksData.map(chunk => ({
-      ...chunk,
-      createdAt: new Date()
+    ...chunk,
+    createdAt: new Date()
   }));
-  await transcriptChunksCollection.insertMany(chunksToInsert);
+
+  try {
+    // First, delete any existing chunks for this job
+    if (chunksToInsert.length > 0) {
+      await transcriptChunksCollection.deleteMany({ jobId: chunksToInsert[0].jobId });
+    }
+
+    // Then insert the new chunks
+    const result = await transcriptChunksCollection.insertMany(chunksToInsert);
+    console.log(`Successfully inserted ${result.insertedCount} transcript chunks`);
+  } catch (error) {
+    console.error('Error in createTranscriptChunks:', error);
+    throw new Error(`Failed to create transcript chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 export async function getTranscriptChunks(jobId: string): Promise<TranscriptChunk[]> {

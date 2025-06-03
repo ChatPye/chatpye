@@ -24,15 +24,17 @@ export function VideoPlayer({ videoId }: VideoPlayerProps) {
   };
 
   const opts: YouTubeProps['opts'] = {
-    height: '100%', // Make player responsive
-    width: '100%',  // Make player responsive
+    height: '100%',
+    width: '100%',
     playerVars: {
-      // https://developers.google.com/youtube/player_parameters
-      autoplay: 0, // Autoplay disabled
-      rel: 0, // Disable related videos at the end
-      modestbranding: 1, // Reduce YouTube logo
-      // enablejsapi: 1, // Already enabled by react-youtube
-    },
+      autoplay: 0,
+      controls: 1,
+      modestbranding: 1,
+      rel: 0,
+      origin: window.location.origin,
+      enablejsapi: 1,
+      widget_referrer: window.location.origin
+    }
   };
 
   return (
@@ -41,8 +43,9 @@ export function VideoPlayer({ videoId }: VideoPlayerProps) {
         videoId={videoId}
         opts={opts}
         onReady={onPlayerReady}
-        className="h-full w-full" // Ensure YouTube component fills the card
-        iframeClassName="h-full w-full" // Ensure iframe fills the component
+        onError={(error: Error) => console.error('YouTube Player Error:', error)}
+        className="h-full w-full"
+        iframeClassName="h-full w-full"
       />
     </Card>
   );

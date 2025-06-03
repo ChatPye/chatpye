@@ -71,20 +71,7 @@ export async function getYouTubeTranscript(videoUrl: string): Promise<Transcript
       throw new Error('Invalid YouTube URL');
     }
 
-    // First check if captions are available
-    const captionsResponse = await fetch(
-      `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-    );
-
-    if (!captionsResponse.ok) {
-      const error = await captionsResponse.json();
-      if (error.error?.code === 403) {
-        throw new Error('This video has captions disabled or restricted. Please try a different video with captions enabled.');
-      }
-      throw new Error('Failed to check video captions availability.');
-    }
-
-    // Try to fetch transcript using youtube-transcript as fallback
+    // Try to fetch transcript using youtube-transcript first
     try {
       const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
         lang: 'en'
@@ -105,6 +92,18 @@ export async function getYouTubeTranscript(videoUrl: string): Promise<Transcript
       console.error('Error fetching transcript with youtube-transcript:', transcriptError);
       
       // If youtube-transcript fails, try to fetch captions directly
+      const captionsResponse = await fetch(
+        `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
+      );
+
+      if (!captionsResponse.ok) {
+        const error = await captionsResponse.json();
+        if (error.error?.code === 403) {
+          throw new Error('This video has captions disabled or restricted. Please try a different video with captions enabled.');
+        }
+        throw new Error('Failed to check video captions availability.');
+      }
+
       const captionsData = await captionsResponse.json();
       if (!captionsData.items || captionsData.items.length === 0) {
         throw new Error('No captions found for this video. Please try a different video with captions enabled.');
@@ -128,7 +127,6 @@ export async function getYouTubeTranscript(videoUrl: string): Promise<Transcript
 
       const captionData = await captionResponse.json();
       // Parse the caption data and transform it to our format
-      // This is a simplified example - you'll need to parse the actual caption format
       return captionData.items.map((item: any) => ({
         text: item.text,
         start: item.start,
