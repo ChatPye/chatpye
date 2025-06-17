@@ -1,30 +1,21 @@
-# Use Node.js with Debian slim for better security
-FROM node:18.19.1-slim AS base
+# Use a more recent and secure version of Node.js
+FROM node:20-alpine AS base
 
-# Install security updates and required packages
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    wget \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install required packages
+RUN apk add --no-cache wget ca-certificates
 
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
 
 # Install dependencies for node-gyp
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3 make g++
 
 # Copy package files
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -74,4 +65,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 # Use node with proper security flags
-CMD ["node", "--max-old-space-size=512", "server.js"] 
+CMD ["node", "server.js"] 
