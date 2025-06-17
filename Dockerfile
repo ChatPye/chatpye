@@ -38,7 +38,8 @@ ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # Create a non-root user with specific UID/GID
-RUN groupadd --system --gid 1001 nodejs && \
+RUN apk add --no-cache shadow bash && \
+    groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs --shell /bin/bash nextjs && \
     mkdir .next && \
     chown nextjs:nodejs .next
