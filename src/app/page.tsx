@@ -54,6 +54,8 @@ interface Message {
 interface VideoInfo {
   id: string
   title?: string
+  description?: string
+  thumbnailUrl?: string
 }
 
 const examplePrompts = [
@@ -91,6 +93,31 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
 
+  // New function to resolve the canonical jobId
+  const resolveAndSetCanonicalJob = async (videoId: string) => {
+    try {
+      setProcessingMessage("Resolving video session...");
+      const response = await fetch(`/api/video/resolve-job?youtubeVideoId=${videoId}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // This is a normal case for a new video, process it.
+          return false;
+        }
+        throw new Error('Failed to resolve video job.');
+      }
+      const data = await response.json();
+      setJobId(data.jobId);
+      setProcessingStatus('completed');
+      setProcessingMessage('Video ready for chat.');
+      toast({ title: "Session Restored", description: "Found a previously processed video session." });
+      return true;
+    } catch (error) {
+      console.error("Error resolving job:", error);
+      // Let the processing flow continue
+      return false;
+    }
+  };
+
   // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -112,12 +139,14 @@ export default function Home() {
         const data = await response.json()
         
         if (data.status === 'completed') {
-          setProcessingStatus('completed')
-          setProcessingMessage('Video processed and ready for chat.')
+          // When polling shows complete, resolve the canonical jobId
+          if (videoId) {
+            await resolveAndSetCanonicalJob(videoId);
+          }
           clearInterval(pollInterval)
         } else if (data.status === 'failed') {
           setProcessingStatus('failed')
-          setProcessingMessage('Failed to process video.')
+          setProcessingMessage(data.progress || 'Failed to process video.')
           clearInterval(pollInterval)
         } else {
           setProcessingStatus('processing')
@@ -132,7 +161,7 @@ export default function Home() {
     }, 3000)
 
     return () => clearInterval(pollInterval)
-  }, [jobId, processingStatus])
+  }, [jobId, processingStatus, videoId])
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -151,11 +180,33 @@ export default function Home() {
     setVideoId(id)
     setMessages([])
     setProcessingStatus('processing')
-    setProcessingMessage("Starting video processing...")
+    setProcessingMessage("Looking for existing sessions...")
     setJobId(null)
     setVideoInfo({ id })
 
     try {
+      // First, try to resolve an existing job.
+      const jobFoundAndSet = await resolveAndSetCanonicalJob(id);
+
+      if (jobFoundAndSet) {
+        // If a job was found, we don't need to process again.
+        // We still fetch video info for the UI.
+        const infoResponse = await fetch('/api/video-info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ youtubeUrl: url }),
+        });
+        if (infoResponse.ok) {
+          const infoData = await infoResponse.json();
+          setVideoInfo(prev => ({...prev, ...infoData}));
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // If no job was found, proceed with processing.
+      setProcessingMessage("No existing session found. Starting new processing...");
+
       // Fetch video info first
       const infoResponse = await fetch('/api/video-info', {
         method: 'POST',
@@ -245,6 +296,16 @@ export default function Home() {
     setInputValue("");
     setIsAiResponding(true);
 
+    const body: any = {
+      message: userMessageContent,
+      jobId: jobId,
+      modelId: selectedModel.id,
+      videoId: videoId,
+      userId: currentUser?.uid || 'anonymous',
+      videoTitle: videoInfo?.title,
+      videoDescription: videoInfo?.description
+    };
+
     const thinkingMessageId = uuidv4();
     const thinkingMessage: Message = {
       id: thinkingMessageId,
@@ -260,16 +321,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          messages: [{
-            message: userMessageContent,
-            jobId,
-            modelId: selectedModel.id,
-            videoId,
-          }],
-          videoId,
-          userId: currentUser?.uid || 'anonymous',
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {

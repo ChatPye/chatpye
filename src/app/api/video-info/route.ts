@@ -32,30 +32,21 @@ export async function POST(request: Request) {
     const { youtubeUrl } = await request.json()
     
     if (!youtubeUrl) {
-      return NextResponse.json(
-        { error: 'YouTube URL is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'youtubeUrl is required' }, { status: 400 })
     }
 
     const videoId = extractVideoId(youtubeUrl)
     if (!videoId) {
-      return NextResponse.json(
-        { error: 'Invalid YouTube URL' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 })
     }
 
-    const videoDetails = await getVideoDetails(videoId)
-    return NextResponse.json({
-      id: videoId,
-      ...videoDetails,
-      url: youtubeUrl
-    })
+    const details = await getVideoDetails(videoId)
+    return NextResponse.json(details)
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     console.error('Error processing video info:', error)
     return NextResponse.json(
-      { error: 'Failed to process video info' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

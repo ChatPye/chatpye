@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, GenerateContentResponse, Part } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerateContentResponse, Part, GenerativeModel, GenerationConfig, Content } from "@google/generative-ai";
 import { getEnvVar, isTestEnvironment } from './env';
 import { verifyTranscriptVideoId } from './mongodb';
 
@@ -8,7 +8,8 @@ if (!process.env.GEMINI_API_KEY) {
   console.warn('Warning: GEMINI_API_KEY environment variable is not set. GeminiService will fail if instantiated and used.');
 }
 
-interface TranscriptContext {
+// Define the TranscriptContext interface to be used by the service
+export interface TranscriptContext {
   text: string;
   startTimestamp: string;
   endTimestamp: string;
@@ -18,23 +19,37 @@ interface TranscriptContext {
 
 export class GeminiService {
   private genAI: GoogleGenerativeAI;
-  private model: any;
+  private model: GenerativeModel;
+  private generationConfig: GenerationConfig;
 
   constructor() {
     const apiKey = getEnvVar('GEMINI_API_KEY');
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is required for GeminiService');
+      throw new Error('GEMINI_API_KEY environment variable is not set.');
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
+    
+    // Define the generation config
+    this.generationConfig = {
+      temperature: 0.7,
+      topK: 1,
+      topP: 1,
+      maxOutputTokens: 2048,
+    };
+
+    // Initialize the model
     try {
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      this.model = this.genAI.getGenerativeModel({ 
+        model: "gemini-1.5-pro",
+        generationConfig: this.generationConfig 
+      });
     } catch (error) {
-      console.error('Error initializing Gemini model:', error);
-      throw new Error('Failed to initialize Gemini model. Please check your API key and model name.');
+      console.error("Failed to initialize Gemini model:", error);
+      throw new Error("Could not initialize Gemini model. Please check your API key and model name.");
     }
   }
 
-  private async validateContexts(contexts: TranscriptContext[]): Promise<void> {
+  private async validateContexts(contexts: TranscriptContext[], videoId: string): Promise<void> {
     if (!contexts || contexts.length === 0) {
       throw new Error('No transcript context provided');
     }
@@ -96,70 +111,107 @@ export class GeminiService {
     }
   }
 
-  async *generateAnswerStream(contexts: TranscriptContext[]): AsyncGenerator<string> {
+  // Unified function for generating answers. Handles both RAG and direct-to-video.
+  async *generateAnswerStream(
+    contexts: Array<TranscriptContext>, 
+    question: string, 
+    videoId: string,
+    videoTitle?: string,
+    videoDescription?: string
+  ): AsyncGenerator<string> {
+    
+    // We still validate if context is provided, to ensure data integrity if it exists.
+    if (contexts.length > 0) {
+      await this.validateContexts(contexts, videoId);
+    } else if (!videoId) {
+      // If there's no context, we MUST have a videoId to proceed.
+      throw new Error("Cannot generate answer without transcript context or a videoId.");
+    }
+
     try {
-      // Validate contexts before processing
-      await this.validateContexts(contexts);
-
-      // Construct the prompt with strict instructions
-      const prompt = `You are an AI assistant answering questions about a specific YouTube video.
-The video ID is: ${contexts[0].videoId}
-
-IMPORTANT RULES:
-1. ONLY use information from the provided transcript segments
-2. If the answer cannot be found in the transcript, say so
-3. Include timestamps in [MM:SS] format for any information you reference
-4. Do not make assumptions or use information from other videos
-5. If you're unsure about something, say so
-
-Here are the relevant transcript segments:
-
-${contexts.map(ctx => `[${ctx.startTimestamp}s - ${ctx.endTimestamp}s] ${ctx.text}`).join('\n\n')}
-
-Please provide a clear and concise answer based ONLY on these transcript segments.`;
-
-      const result = await this.model.generateContentStream(prompt);
-      
-      for await (const chunk of result.stream) {
-        const text = chunk.text();
-        if (text) {
-          yield text;
+      if (contexts.length === 0) {
+        // --- Direct-to-video prompt when no transcript is available ---
+        // This now uses the official method for prompting with a YouTube URL.
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        
+        const result = await this.model.generateContentStream([
+          question,
+          {
+            fileData: {
+              mimeType: "video/youtube",
+              fileUri: videoUrl,
+            },
+          },
+        ]);
+        
+        for await (const chunk of result.stream) {
+          const chunkText = chunk.text();
+          yield chunkText;
         }
+        return; // Exit the generator after handling the direct-to-video case
+      }
+      
+      // This part of the code is now only for the RAG-based approach
+      const chat = this.model.startChat({
+        history: [],
+        generationConfig: this.generationConfig
+      });
+      
+      const transcriptSegments = contexts.map(c => 
+        `[${c.startTimestamp} - ${c.endTimestamp}] ${c.text}`
+      ).join('\n');
+
+      const ragPrompt = `
+        You are a helpful AI assistant. Answer the user's question based *only* on the following transcript segments from the video.
+        Do not use any prior knowledge. If the answer is not in the provided segments, say "I cannot answer that based on the provided transcript."
+        When you use information from a segment, cite the start timestamp in your answer, like this: [01:23].
+        
+        Transcript Segments:
+        ---
+        ${transcriptSegments}
+        ---
+        
+        User Question: ${question}
+      `;
+      
+      const result = await chat.sendMessageStream(ragPrompt);
+
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        yield chunkText;
       }
     } catch (error) {
-      console.error('Error in generateAnswerStream:', error);
-      throw error;
+      console.error('Error generating answer stream:', error);
+      yield "Sorry, I encountered an error while trying to answer your question.";
     }
   }
 
+  // This function is now redundant and will be removed.
+  /*
   async *generateAnswerFromYouTubeUrlDirectly(youtubeUrl: string, question: string): AsyncGenerator<string> {
     try {
-      const prompt = `You are an AI assistant answering questions about a YouTube video.
-The video URL is: ${youtubeUrl}
+      const videoId = extractVideoId(youtubeUrl);
+      if (!videoId) {
+        throw new Error('Invalid YouTube URL provided.');
+      }
 
-IMPORTANT RULES:
-1. ONLY use information from the video content
-2. If you cannot answer based on the video content, say so
-3. Do not make assumptions or use information from other videos
-4. If you're unsure about something, say so
-
-Question: ${question}
-
-Please provide a clear and concise answer based ONLY on the video content.`;
-
-      const result = await this.model.generateContentStream(prompt);
+      const prompt = `
+        Please answer the following question about the YouTube video at this URL: ${youtubeUrl}.
+        Question: ${question}
+      `;
       
+      const result = await this.model.generateContentStream([prompt]);
+
       for await (const chunk of result.stream) {
-        const text = chunk.text();
-        if (text) {
-          yield text;
-        }
+        const chunkText = chunk.text();
+        yield chunkText;
       }
     } catch (error) {
       console.error('Error in generateAnswerFromYouTubeUrlDirectly:', error);
-      throw error;
+      yield "Sorry, there was an error processing the video directly.";
     }
   }
+  */
 }
 
 export const geminiService = new GeminiService(); 

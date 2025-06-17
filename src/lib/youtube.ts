@@ -50,6 +50,7 @@ export async function getVideoDetails(videoId: string) {
       description: video.snippet?.description,
       channelTitle: video.snippet?.channelTitle,
       publishedAt: video.snippet?.publishedAt,
+      thumbnailUrl: video.snippet?.thumbnails?.high?.url || video.snippet?.thumbnails?.default?.url,
     }
   } catch (error) {
     console.error("Error fetching video details:", error)
@@ -63,90 +64,21 @@ export interface TranscriptSegment {
   duration: number;
 }
 
-export async function getYouTubeTranscript(videoUrl: string): Promise<TranscriptSegment[] | null> {
+export async function getYouTubeTranscript(youtubeUrl: string): Promise<TranscriptSegment[]> {
   try {
-    // Extract video ID from URL
-    const videoId = extractVideoId(videoUrl);
-    if (!videoId) {
-      throw new Error('Invalid YouTube URL');
+    const transcriptResponse = await YoutubeTranscript.fetchTranscript(youtubeUrl);
+    if (!transcriptResponse || transcriptResponse.length === 0) {
+      throw new Error("Library returned an empty transcript.");
     }
-
-    // Try to fetch transcript using youtube-transcript first
-    try {
-      const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
-        lang: 'en'
-      });
-      
-      if (!transcript || transcript.length === 0) {
-        console.error('No transcript found for video:', videoId);
-        return null;
-      }
-      
-      // Transform to our format
-      return transcript.map(segment => ({
-        text: segment.text,
-        start: segment.offset,
-        duration: segment.duration
-      }));
-    } catch (transcriptError) {
-      console.error('Error fetching transcript with youtube-transcript:', transcriptError);
-      
-      // If youtube-transcript fails, try to fetch captions directly
-      const captionsResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-      );
-
-      if (!captionsResponse.ok) {
-        const error = await captionsResponse.json();
-        if (error.error?.code === 403) {
-          throw new Error('This video has captions disabled or restricted. Please try a different video with captions enabled.');
-        }
-        throw new Error('Failed to check video captions availability.');
-      }
-
-      const captionsData = await captionsResponse.json();
-      if (!captionsData.items || captionsData.items.length === 0) {
-        throw new Error('No captions found for this video. Please try a different video with captions enabled.');
-      }
-
-      // Get the first available caption track
-      const captionId = captionsData.items[0].id;
-      const captionResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/captions/${captionId}?key=${process.env.YOUTUBE_API_KEY}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.YOUTUBE_API_KEY}`,
-            'Accept': 'application/json'
-          }
-        }
-      );
-
-      if (!captionResponse.ok) {
-        throw new Error('Failed to fetch video captions. Please try a different video.');
-      }
-
-      const captionData = await captionResponse.json();
-      // Parse the caption data and transform it to our format
-      return captionData.items.map((item: any) => ({
-        text: item.text,
-        start: item.start,
-        duration: item.duration
-      }));
-    }
+    const transcript: TranscriptSegment[] = transcriptResponse.map(item => ({
+      text: item.text,
+      start: item.offset,
+      duration: item.duration
+    }));
+    return transcript;
   } catch (error) {
-    console.error('Error fetching YouTube transcript:', error);
-    if (error instanceof Error) {
-      if (error.message.includes('Could not get the transcript')) {
-        throw new Error('This video does not have captions available. Please try a different video with captions enabled.');
-      } else if (error.message.includes('Transcript is disabled')) {
-        throw new Error('This video has captions disabled. Please try a different video with captions enabled.');
-      } else if (error.message.includes('Video is private')) {
-        throw new Error('This video is private. Please try a public video.');
-      } else if (error.message.includes('Video is restricted')) {
-        throw new Error('This video is restricted. Please try a different video.');
-      }
-    }
-    throw new Error('Failed to fetch transcript. Please try a different video.');
+    console.error(`Error fetching transcript with 'youtube-transcript' for URL: ${youtubeUrl}. Full error object:`, error);
+    throw new Error(`Failed to fetch transcript. It may not be available or is in an unsupported format.`);
   }
 }
 
