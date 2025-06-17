@@ -28,6 +28,11 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# Accept OPENAI_API_KEY as a build argument
+ARG OPENAI_API_KEY
+# Set it as an environment variable for the build
+ENV OPENAI_API_KEY=$OPENAI_API_KEY
+
 RUN npm run build
 
 # Production image, copy all the files and run next
