@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getCollections, VideoJob } from '@/lib/mongodb';
 import { extractVideoId } from '@/lib/youtube';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
