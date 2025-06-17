@@ -28,10 +28,18 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# Accept OPENAI_API_KEY as a build argument
+# Accept API keys as build arguments
 ARG OPENAI_API_KEY
-# Set it as an environment variable for the build
+ARG ANTHROPIC_API_KEY
+ARG GEMINI_API_KEY
+ARG GOOGLE_AI_KEY
+ARG YOUTUBE_API_KEY
+# Set them as environment variables for the build
 ENV OPENAI_API_KEY=$OPENAI_API_KEY
+ENV ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+ENV GEMINI_API_KEY=$GEMINI_API_KEY
+ENV GOOGLE_AI_KEY=$GOOGLE_AI_KEY
+ENV YOUTUBE_API_KEY=$YOUTUBE_API_KEY
 
 RUN npm run build
 
