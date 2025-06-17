@@ -174,7 +174,10 @@ export default function Home() {
       const processResponse = await fetch('/api/video/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ youtubeUrl: url }),
+        body: JSON.stringify({ 
+          youtubeUrl: url,
+          userId: currentUser?.uid || 'anonymous'
+        }),
       })
 
       if (!processResponse.ok) {
@@ -258,10 +261,14 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: userMessageContent,
-          jobId,
-          modelId: selectedModel.id,
+          messages: [{
+            message: userMessageContent,
+            jobId,
+            modelId: selectedModel.id,
+            videoId,
+          }],
           videoId,
+          userId: currentUser?.uid || 'anonymous',
         }),
       });
 
@@ -275,7 +282,7 @@ export default function Home() {
 
       // Check if the response is a stream
       const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('text/plain')) {
+      if (contentType && (contentType.includes('text/plain') || contentType.includes('text/event-stream'))) {
         // Handle streaming response
         const reader = response.body?.getReader();
         if (!reader) {
@@ -311,6 +318,12 @@ export default function Home() {
           }
         } catch (error) {
           console.error('Error reading stream:', error);
+          // Update the message with the error
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, content: `Error: ${error instanceof Error ? error.message : 'Failed to get response'}` }
+              : msg
+          ));
           throw error;
         } finally {
           reader.releaseLock();

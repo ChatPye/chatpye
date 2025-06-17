@@ -1,27 +1,43 @@
 import { Collection, Db, MongoClient, ServerApiVersion, ObjectId } from 'mongodb';
+import { getEnvVar, getOptionalEnvVar, isTestEnvironment } from './env';
 
 // Define interfaces for your data structures
 export interface VideoJob {
   _id?: ObjectId;
   jobId: string;
   youtubeUrl: string;
+  userId: string;           // Add user ID to track ownership
   status: 'pending' | 'processing' | 'completed' | 'failed';
   transcriptStatus?: 'processing' | 'found' | 'not_found' | 'failed' | 'error';
   progress?: string; // Optional progress message
   createdAt?: Date;
   updatedAt?: Date;
+  processingMetadata?: {
+    videoId: string;
+    videoTitle?: string;
+    processingStartTime?: Date;
+    processingEndTime?: Date;
+    transcriptSource?: 'youtube' | 'manual' | 'reused';
+    originalJobId?: string;  // If this is a reused transcript, track the original job
+  };
   // You might add more fields like videoTitle, duration, etc.
 }
 
 export interface TranscriptChunk {
   _id?: ObjectId;
   jobId: string;
-  chunkId: string; // e.g., jobId-chunkIndex
+  userId: string;
+  chunkId: string;
   textContent: string;
-  startTimestamp: string; // Store as string, consistent with current RAG use
-  endTimestamp: string;   // Store as string
-  embedding?: number[]; // Array of numbers for the embedding
-  createdAt?: Date;
+  startTimestamp: string;
+  endTimestamp: string;
+  segmentCount: number;
+  embedding: number[];
+  metadata: {
+    processingVersion: number;
+    videoId: string;
+    originalJobId?: string;
+  };
 }
 
 export interface CachedQAResponse {
@@ -38,109 +54,76 @@ export interface CachedQAResponse {
   // structuredResponseData?: any; // Future use for structured proactive analysis
 }
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'chatpye_db'; // Default DB name
-
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable in .env.local');
-}
-
+// MongoDB connection state
 let client: MongoClient | null = null;
 let db: Db | null = null;
 
-interface Collections {
-  videoJobsCollection?: Collection<VideoJob>;
-  transcriptChunksCollection?: Collection<TranscriptChunk>;
-  cachedVideoQACollection?: Collection<CachedQAResponse>;
-}
+// Collection references with proper typing
+let videoJobsCollection: Collection<VideoJob> | null = null;
+let transcriptChunksCollection: Collection<TranscriptChunk> | null = null;
+let cachedVideoQACollection: Collection<CachedQAResponse> | null = null;
 
-const collections: Collections = {};
-
-export async function connectToDatabase(): Promise<Db> {
+/**
+ * Connects to the MongoDB database
+ * @throws Error if connection fails or required environment variables are missing
+ */
+export async function connectToDatabase() {
   if (db && client) {
-    // TODO: Verify client connection state if possible, e.g. client.isConnected()
-    // For serverless, creating new connections per request or short-lived connections might be okay.
-    // For long-running servers, maintaining a persistent connection is better.
-    // This simple check assumes client remains connected.
-    return db;
+    return { db, client };
   }
-
-  if (!MONGODB_URI) {
-    throw new Error('MongoDB URI is not defined.');
-  }
-
-  client = new MongoClient(MONGODB_URI, {
-    serverApi: ServerApiVersion.v1,
-    tls: true,
-    tlsAllowInvalidCertificates: true, // Allow invalid certificates in development
-    tlsAllowInvalidHostnames: true,    // Allow invalid hostnames in development
-    maxPoolSize: 50,
-    minPoolSize: 10,
-    maxIdleTimeMS: 60000,
-    connectTimeoutMS: 30000,
-    socketTimeoutMS: 45000,
-    retryWrites: true,
-    retryReads: true,
-    directConnection: false
-  });
 
   try {
+    // Get MongoDB URI from environment
+    const uri = isTestEnvironment() 
+      ? process.env.MONGODB_URI 
+      : getEnvVar('MONGODB_URI');
+
+    if (!uri) {
+      throw new Error('MONGODB_URI is not set');
+    }
+
+    // Connect to MongoDB
+    client = new MongoClient(uri);
     await client.connect();
-    db = client.db(MONGODB_DB_NAME);
-    console.log('Successfully connected to MongoDB.');
 
-    // Initialize collections
-    collections.videoJobsCollection = db.collection<VideoJob>('videoJobs');
-    collections.transcriptChunksCollection = db.collection<TranscriptChunk>('transcriptChunks');
-    collections.cachedVideoQACollection = db.collection<CachedQAResponse>('cachedVideoQA');
-    
-    // Create Indexes (idempotent - only creates if they don't exist)
-    await collections.videoJobsCollection.createIndex({ jobId: 1 }, { unique: true });
-    await collections.transcriptChunksCollection.createIndex({ jobId: 1, chunkId: 1 }, { unique: true });
-    await collections.transcriptChunksCollection.createIndex({ jobId: 1 }); // For fetching all chunks for a job
-    await collections.cachedVideoQACollection.createIndex(
-        { jobId: 1, questionTextNormalized: 1, modelUsed: 1, cacheType: 1 },
-        { name: "user_question_cache_idx" }
-    );
-    await collections.cachedVideoQACollection.createIndex(
-        { jobId: 1, analysisType: 1, modelUsed: 1, cacheType: 1 },
-        { name: "proactive_analysis_cache_idx" }
-    );
+    // Get database name from environment or use default
+    const dbName = getOptionalEnvVar('MONGODB_DB_NAME');
+    db = client.db(dbName);
 
-    return db;
+    // Initialize collections with proper typing
+    videoJobsCollection = db.collection<VideoJob>('videoJobs');
+    transcriptChunksCollection = db.collection<TranscriptChunk>('transcriptChunks');
+    cachedVideoQACollection = db.collection<CachedQAResponse>('cachedQAResponses');
+
+    // Create indexes
+    await videoJobsCollection.createIndex({ jobId: 1 }, { unique: true });
+    await videoJobsCollection.createIndex({ 'processingMetadata.videoId': 1 });
+    await transcriptChunksCollection.createIndex({ jobId: 1 });
+    await transcriptChunksCollection.createIndex({ 'metadata.videoId': 1 });
+
+    return { db, client };
   } catch (error) {
     console.error('Failed to connect to MongoDB:', error);
-    client = null; // Reset client on failure
-    db = null;     // Reset db on failure
-    
-    // Provide more specific error messages
-    if (error instanceof Error) {
-      if (error.message.includes('ECONNREFUSED')) {
-        throw new Error('Could not connect to MongoDB server. Please check if the server is running and accessible.');
-      } else if (error.message.includes('Authentication failed')) {
-        throw new Error('MongoDB authentication failed. Please check your credentials.');
-      } else if (error.message.includes('Invalid URI')) {
-        throw new Error('Invalid MongoDB URI. Please check your connection string.');
-      } else if (error.message.includes('TLS')) {
-        throw new Error('TLS connection failed. Please check your SSL/TLS configuration.');
-      }
-    }
-    throw new Error(`MongoDB connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw error;
   }
 }
 
 // Export a function to get specific collections, ensuring DB connection
-export async function getCollections(): Promise<Collections> {
-  if (!db || !client) { // Or add more robust connection check
+export async function getCollections(): Promise<{
+  videoJobsCollection?: Collection<VideoJob>;
+  transcriptChunksCollection?: Collection<TranscriptChunk>;
+  cachedVideoQACollection?: Collection<CachedQAResponse>;
+}> {
+  if (!db || !client) {
     await connectToDatabase();
   }
-  if (!collections.videoJobsCollection || !collections.transcriptChunksCollection || !collections.cachedVideoQACollection) {
-    // This might happen if connectToDatabase was called but collections weren't set (shouldn't occur with current logic)
-    // Or if db connection was lost and re-established without re-setting collections object.
-    // For simplicity, re-run connectToDatabase which also sets collections.
-    await connectToDatabase();
-  }
-  return collections;
+
+  // Return collections with proper typing
+  return {
+    videoJobsCollection: videoJobsCollection || undefined,
+    transcriptChunksCollection: transcriptChunksCollection || undefined,
+    cachedVideoQACollection: cachedVideoQACollection || undefined
+  };
 }
 
 // --- Video Job Functions ---
@@ -190,9 +173,12 @@ export async function createTranscriptChunks(chunksData: TranscriptChunk[]): Pro
   }));
 
   try {
-    // First, delete any existing chunks for this job
+    // First, delete any existing chunks for this job and user
     if (chunksToInsert.length > 0) {
-      await transcriptChunksCollection.deleteMany({ jobId: chunksToInsert[0].jobId });
+      await transcriptChunksCollection.deleteMany({ 
+        jobId: chunksToInsert[0].jobId,
+        userId: chunksToInsert[0].userId 
+      });
     }
 
     // Then insert the new chunks
@@ -219,6 +205,49 @@ export async function updateTranscriptChunkEmbeddings(jobId: string, chunkId: st
         { $set: { embedding } }
     );
     return result.modifiedCount > 0;
+}
+
+// Add a new function to get user-specific transcript chunks
+export async function getUserTranscriptChunks(jobId: string, userId: string): Promise<TranscriptChunk[]> {
+  const { transcriptChunksCollection } = await getCollections();
+  if (!transcriptChunksCollection) throw new Error("transcriptChunksCollection not initialized");
+  
+  return transcriptChunksCollection
+    .find({ jobId, userId })
+    .sort({ startTimestamp: 1 })
+    .toArray();
+}
+
+// Add a function to verify transcript ownership
+export async function verifyTranscriptOwnership(jobId: string, userId: string): Promise<boolean> {
+  const { videoJobsCollection } = await getCollections();
+  if (!videoJobsCollection) throw new Error("videoJobsCollection not initialized");
+  
+  const job = await videoJobsCollection.findOne({ jobId, userId });
+  return !!job;
+}
+
+// Add type-safe transcript retrieval function
+export async function getTranscriptChunksByVideoId(videoId: string, userId: string): Promise<TranscriptChunk[]> {
+  const { transcriptChunksCollection } = await getCollections();
+  if (!transcriptChunksCollection) throw new Error("transcriptChunksCollection not initialized");
+  
+  return transcriptChunksCollection.find({
+    'metadata.videoId': videoId,
+    userId
+  }).toArray();
+}
+
+// Add function to verify transcript-videoId match
+export async function verifyTranscriptVideoId(jobId: string, videoId: string): Promise<boolean> {
+  const { videoJobsCollection } = await getCollections();
+  if (!videoJobsCollection) throw new Error("videoJobsCollection not initialized");
+  
+  const job = await videoJobsCollection.findOne({ 
+    jobId,
+    'processingMetadata.videoId': videoId 
+  });
+  return !!job;
 }
 
 // --- Q&A Cache Functions ---

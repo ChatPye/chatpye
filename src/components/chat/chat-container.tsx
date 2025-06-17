@@ -67,7 +67,7 @@ export function ChatContainer({
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] max-h-[800px]">
+    <div className="flex flex-col h-[calc(100vh-300px)] max-h-[600px]">
       {/* Video Status Section */}
       {processingStatus !== 'idle' && (
         <div className="flex-shrink-0 p-3 sm:p-4 border-b bg-slate-50">

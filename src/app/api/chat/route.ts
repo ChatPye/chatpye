@@ -1,14 +1,35 @@
 import { NextResponse } from "next/server"
-import { getTranscriptChunks, getVideoJob, getCachedQAResponse, saveQAResponse } from "@/lib/mongodb"
+import { getTranscriptChunks, getVideoJob, getCachedQAResponse, saveQAResponse, getTranscriptChunksByVideoId, verifyTranscriptVideoId } from "@/lib/mongodb"
 import { findRelevantChunks } from "@/lib/embeddings"
 import { openAIService } from '@/lib/openai';
 import { anthropicService } from '@/lib/anthropic';
 import { geminiService } from '@/lib/gemini';
+import { getEnvVar } from '@/lib/env';
+import { extractVideoId } from '@/lib/youtube';
 
 interface ServiceContext {
   text: string;
   startTimestamp: string;
   endTimestamp: string;
+  jobId: string;
+  videoId: string;
+}
+
+// Add this interface at the top level
+interface TranscriptChunk {
+  jobId: string;
+  userId: string;
+  chunkId: string;
+  textContent: string;
+  startTimestamp: string;
+  endTimestamp: string;
+  segmentCount: number;
+  embedding: number[];
+  metadata: {
+    processingVersion: number;
+    videoId: string;
+    originalJobId?: string;
+  };
 }
 
 // Helper to normalize questions for consistent cache keys
@@ -68,16 +89,112 @@ async function processStreamForResponseAndCache(
   return readableStream;
 }
 
+// Add this function at the top level
+async function validateTranscriptChunks(chunks: TranscriptChunk[], videoId: string, userId: string) {
+  if (!chunks || chunks.length === 0) {
+    console.log('No transcript chunks found for video:', videoId);
+    throw new Error('No transcript chunks found');
+  }
+
+  // Verify all chunks belong to the correct video
+  const invalidChunks = chunks.filter(chunk => 
+    chunk.metadata?.videoId !== videoId
+  );
+
+  if (invalidChunks.length > 0) {
+    console.error('Found transcript chunks with mismatched videoId:', {
+      expectedVideoId: videoId,
+      invalidChunks: invalidChunks.map(c => ({
+        jobId: c.jobId,
+        actualVideoId: c.metadata?.videoId
+      }))
+    });
+    throw new Error('Found transcript chunks with mismatched video ID');
+  }
+
+  // Verify all chunks belong to the correct user
+  const unauthorizedChunks = chunks.filter(chunk => 
+    chunk.userId !== userId
+  );
+
+  if (unauthorizedChunks.length > 0) {
+    console.error('Found transcript chunks with mismatched userId:', {
+      expectedUserId: userId,
+      unauthorizedChunks: unauthorizedChunks.map(c => ({
+        jobId: c.jobId,
+        actualUserId: c.userId
+      }))
+    });
+    throw new Error('Found transcript chunks with mismatched user ID');
+  }
+
+  // Verify timestamp continuity
+  const sortedChunks = [...chunks].sort((a, b) => 
+    parseFloat(a.startTimestamp) - parseFloat(b.startTimestamp)
+  );
+
+  for (let i = 1; i < sortedChunks.length; i++) {
+    const prevEnd = parseFloat(sortedChunks[i-1].endTimestamp);
+    const currStart = parseFloat(sortedChunks[i].startTimestamp);
+    
+    if (currStart < prevEnd) {
+      console.error('Found overlapping timestamps:', {
+        previous: {
+          jobId: sortedChunks[i-1].jobId,
+          end: prevEnd
+        },
+        current: {
+          jobId: sortedChunks[i].jobId,
+          start: currStart
+        }
+      });
+      throw new Error('Transcript chunks contain overlapping timestamps');
+    }
+  }
+
+  return sortedChunks;
+}
+
 export async function POST(request: Request) {
   try {
-    const { message, jobId, modelId, videoId } = await request.json()
+    const { messages, videoId, userId } = await request.json();
+    
+    if (!videoId || !userId) {
+      return NextResponse.json(
+        { error: 'Video ID and User ID are required' },
+        { status: 400 }
+      );
+    }
+
+    // Get the latest message
+    const latestMessage = messages[messages.length - 1];
+    const { message, jobId, modelId } = latestMessage;
 
     if (!message || !modelId) {
       return NextResponse.json(
-        { error: "Message and modelId are required", stream: false, fromCache: false },
+        { error: 'Message and model ID are required' },
         { status: 400 }
-      )
+      );
     }
+
+    // Normalize the question for caching
+    const normalizedQuestion = message.toLowerCase().trim();
+    let modelUsedForCacheKey = modelId;
+
+    // 1. Check cache first
+    const cachedResponse = await getCachedQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey);
+    if (cachedResponse) {
+      console.log('CACHE_HIT:', { jobId, question: normalizedQuestion, model: modelUsedForCacheKey });
+      return new NextResponse(cachedResponse.responseText, {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    console.log('CACHE_MISS:', { jobId, question: normalizedQuestion, model: modelUsedForCacheKey });
 
     // For non-Gemini models, jobId is required
     if (modelId !== "gemini" && !jobId) {
@@ -103,108 +220,167 @@ export async function POST(request: Request) {
       );
     }
 
-    const normalizedQuestion = normalizeQuestion(message);
-    // Define model used for cache key based on actual model being used by the service
-    // This might need to be more dynamic if model versions change in services
-    let modelUsedForCacheKey: string;
-
     // --- Gemini Model Path (Defaulting to Direct YouTube URL Streaming with Cache) ---
     if (modelId === "gemini") {
       modelUsedForCacheKey = "gemini-1.5-pro"; // Updated cache key
       
-      // 1. Check Cache First
-      const cachedResponse = await getCachedQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey);
-      if (cachedResponse) {
-        console.log(`CACHE_HIT: Gemini - JobId: ${jobId}, Question: "${normalizedQuestion}"`);
-        return NextResponse.json({ 
-          message: cachedResponse.responseText, 
-          fromCache: true, 
-          stream: false 
-        });
-      }
-      console.log(`CACHE_MISS: Gemini - JobId: ${jobId}, Question: "${normalizedQuestion}"`);
-
       // 2. Get transcript chunks for RAG-based approach
-      const chunks = await getTranscriptChunks(jobId);
-      let serviceContext: ServiceContext[] = [];
+      let chunks: TranscriptChunk[] = [];
+      try {
+        chunks = await getTranscriptChunksByVideoId(videoId, userId);
+        console.log(`Found ${chunks.length} transcript chunks for video ${videoId}`);
+      } catch (error) {
+        console.error('Error fetching transcript chunks:', error);
+        chunks = [];
+      }
+      
+      try {
+        // Validate chunks before using them
+        const validChunks = await validateTranscriptChunks(chunks, videoId, userId);
+        
+        if (validChunks.length === 0) {
+          console.log('No valid chunks found for this video, falling back to direct YouTube URL approach');
+          // If no valid chunks, use direct YouTube URL approach
+          const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const geminiGenerator = geminiService.generateAnswerFromYouTubeUrlDirectly(youtubeUrl, message);
+          const stream = await processStreamForResponseAndCache(
+            geminiGenerator,
+            async (fullText) => {
+              await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, fullText);
+            }
+          );
 
-      if (chunks && chunks.length > 0) {
-        // If we have chunks, use RAG
-        const relevantChunks = await findRelevantChunks(message, chunks);
-        serviceContext = relevantChunks.map(chunk => ({
+          return new NextResponse(stream, {
+            headers: {
+              'Content-Type': 'text/plain',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            },
+          });
+        }
+
+        // Find relevant chunks from validated chunks
+        const relevantChunks = await findRelevantChunks(message, validChunks);
+        
+        if (relevantChunks.length === 0) {
+          console.log('No relevant chunks found, falling back to direct YouTube URL approach');
+          const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const geminiGenerator = geminiService.generateAnswerFromYouTubeUrlDirectly(youtubeUrl, message);
+          const stream = await processStreamForResponseAndCache(
+            geminiGenerator,
+            async (fullText) => {
+              await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, fullText);
+            }
+          );
+
+          return new NextResponse(stream, {
+            headers: {
+              'Content-Type': 'text/plain',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            },
+          });
+        }
+
+        const serviceContext = relevantChunks.map(chunk => ({
           text: chunk.textContent,
           startTimestamp: chunk.startTimestamp.toString(),
           endTimestamp: chunk.endTimestamp.toString(),
+          jobId: chunk.jobId,
+          videoId: chunk.metadata.videoId
         }));
+
+        // Generate answer using RAG
+        const geminiGenerator = geminiService.generateAnswerStream(serviceContext);
+        const stream = await processStreamForResponseAndCache(
+          geminiGenerator,
+          async (fullText) => {
+            await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, fullText);
+          }
+        );
+
+        return new NextResponse(stream, {
+          headers: {
+            'Content-Type': 'text/plain',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
+      } catch (error) {
+        console.error('Error validating or processing transcript chunks:', error);
+        // Fall back to direct YouTube URL approach
+        const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const geminiGenerator = geminiService.generateAnswerFromYouTubeUrlDirectly(youtubeUrl, message);
+        const stream = await processStreamForResponseAndCache(
+          geminiGenerator,
+          async (fullText) => {
+            await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, fullText);
+          }
+        );
+
+        return new NextResponse(stream, {
+          headers: {
+            'Content-Type': 'text/plain',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
       }
-
-      // 3. Generate answer using Gemini
-      const geminiGenerator = geminiService.generateAnswer(
-        serviceContext,
-        message,
-        jobId
-      );
-
-      // Collect the response from the generator
-      let geminiResponse = '';
-      for await (const chunk of geminiGenerator) {
-        geminiResponse += chunk;
-      }
-
-      // 4. Cache the response
-      await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, geminiResponse);
-
-      return NextResponse.json({ 
-        message: geminiResponse, 
-        fromCache: false, 
-        stream: false 
-      });
-    } 
+    }
     // --- OpenAI / Anthropic Models Path (RAG-based, Non-Streaming for now) ---
-    // These paths will require transcript chunks (serviceContext)
     else { 
-        const chunks = await getTranscriptChunks(jobId);
-        if (!chunks || chunks.length === 0) {
-            return NextResponse.json(
-                { error: "No transcript chunks found for this video to use with selected model.", stream: false, fromCache: false },
-                { status: 404 }
-            );
+      const chunks = await getTranscriptChunks(jobId);
+      
+      try {
+        // Validate chunks before using them
+        const validChunks = await validateTranscriptChunks(chunks, videoId, userId);
+        
+        if (validChunks.length === 0) {
+          return NextResponse.json(
+            { error: "No valid transcript chunks found for this video to use with selected model.", stream: false, fromCache: false },
+            { status: 404 }
+          );
         }
-        const relevantChunks = await findRelevantChunks(message, chunks);
-        const serviceContext = relevantChunks.map(chunk => ({
-            text: chunk.textContent,
-            startTimestamp: chunk.startTimestamp.toString(), // Ensure string format for services
-            endTimestamp: chunk.endTimestamp.toString(),     // Ensure string format for services
-        }));
 
-        if (!serviceContext || serviceContext.length === 0) {
-             return NextResponse.json(
-                { error: "Could not derive relevant context for this question from the video transcript." },
-                { status: 404 }
-            );
+        const relevantChunks = await findRelevantChunks(message, validChunks);
+        if (relevantChunks.length === 0) {
+          return NextResponse.json(
+            { error: "Could not derive relevant context for this question from the video transcript." },
+            { status: 404 }
+          );
         }
+
+        const serviceContext = relevantChunks.map(chunk => ({
+          text: chunk.textContent,
+          startTimestamp: chunk.startTimestamp.toString(),
+          endTimestamp: chunk.endTimestamp.toString(),
+          jobId: jobId,
+          videoId: chunk.metadata.videoId
+        }));
 
         let text = "";
         if (modelId === "openai") {
-            modelUsedForCacheKey = "openai-gpt-3.5-turbo"; // Example
-            // TODO: Implement caching for OpenAI if desired, following similar pattern as Gemini
-            text = await openAIService.generateAnswer(serviceContext, message);
+          modelUsedForCacheKey = "openai-gpt-3.5-turbo";
+          text = await openAIService.generateAnswer(serviceContext, message);
         } else if (modelId === "anthropic") {
-            modelUsedForCacheKey = "anthropic-claude-3-opus"; // Example
-            // TODO: Implement caching for Anthropic if desired
-            text = await anthropicService.generateAnswer(serviceContext, message);
-        } else {
-            return NextResponse.json({ error: "Invalid modelId provided." }, { status: 400 });
+          modelUsedForCacheKey = "anthropic-claude-3-opus";
+          text = await anthropicService.generateAnswer(serviceContext, message);
         }
-        
-        // For now, OpenAI and Anthropic are non-streaming and don't use the new cache write path.
-        // If they were to be cached, the saveQAResponse would be called here.
-        return NextResponse.json({ message: text, fromCache: false, stream: false });
-    }
 
+        // Save to cache
+        await saveQAResponse(jobId, normalizedQuestion, modelUsedForCacheKey, text);
+        
+        return NextResponse.json({ message: text, fromCache: false, stream: false });
+      } catch (error) {
+        console.error('Error validating or processing transcript chunks:', error);
+        return NextResponse.json(
+          { error: "Failed to process transcript chunks. Please try again later." },
+          { status: 500 }
+        );
+      }
+    }
   } catch (error: any) {
     console.error("General error in /api/chat POST:", error.message, error.stack);
-    // Ensure a JSON response for errors not caught by specific blocks
     return NextResponse.json(
       { error: "Failed to generate response due to an unexpected internal server error.", errorMessage: error.message, stream: false, fromCache: false },
       { status: 500 }

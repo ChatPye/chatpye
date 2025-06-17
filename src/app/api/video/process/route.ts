@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { createVideoJob, updateVideoJob, createTranscriptChunks, updateTranscriptChunkEmbeddings } from '@/lib/mongodb';
-import { getYouTubeTranscript, extractVideoId, getVideoDetails } from '@/lib/youtube';
+import { getYouTubeTranscript, extractVideoId, getVideoDetails, TranscriptSegment } from '@/lib/youtube';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '@/lib/embeddings';
 import { getCollections } from '@/lib/mongodb';
@@ -31,7 +31,7 @@ async function processChunksInBatches(chunks: any[], jobId: string, batchSize = 
   }
 }
 
-async function processVideo(jobId: string, youtubeUrl: string) {
+async function processVideo(jobId: string, youtubeUrl: string, userId: string) {
   try {
     // Update job status to processing
     await updateVideoJob(jobId, { status: 'processing', progress: 'Checking video availability...' });
@@ -83,35 +83,54 @@ async function processVideo(jobId: string, youtubeUrl: string) {
     // Create transcript chunks with a maximum size
     const MAX_CHUNK_SIZE = 1000; // characters
     const chunks = [];
-    let currentChunk = {
+    let currentChunk: {
+      text: string;
+      start: number;
+      duration: number;
+      segments: TranscriptSegment[];
+    } = {
       text: '',
       start: 0,
-      duration: 0
+      duration: 0,
+      segments: []
     };
 
     for (const segment of transcript) {
-      if (currentChunk.text.length + segment.text.length > MAX_CHUNK_SIZE) {
-        // Save current chunk if it has content
-        if (currentChunk.text) {
-          chunks.push({
-            jobId,
-            chunkId: `${jobId}-${chunks.length}`,
-            textContent: currentChunk.text.trim(),
-            startTimestamp: currentChunk.start.toString(),
-            endTimestamp: (currentChunk.start + currentChunk.duration).toString(),
-            embedding: []
-          });
-        }
-        // Start new chunk
+      // Check if adding this segment would exceed the max size
+      const wouldExceedMaxSize = currentChunk.text.length + segment.text.length > MAX_CHUNK_SIZE;
+      
+      // If we have content and adding this segment would exceed max size, save current chunk
+      if (currentChunk.text && wouldExceedMaxSize) {
+        chunks.push({
+          jobId,
+          userId,
+          chunkId: `${jobId}-${chunks.length}`,
+          textContent: currentChunk.text.trim(),
+          startTimestamp: currentChunk.start.toString(),
+          endTimestamp: (currentChunk.start + currentChunk.duration).toString(),
+          segmentCount: currentChunk.segments.length,
+          embedding: [],
+          metadata: {
+            processingVersion: 1
+          }
+        });
+        
+        // Start new chunk with current segment
         currentChunk = {
           text: segment.text,
           start: segment.start,
-          duration: segment.duration
+          duration: segment.duration,
+          segments: [segment]
         };
       } else {
         // Add to current chunk
-        currentChunk.text += ' ' + segment.text;
+        if (currentChunk.text) {
+          currentChunk.text += ' ' + segment.text;
+        } else {
+          currentChunk.text = segment.text;
+        }
         currentChunk.duration += segment.duration;
+        currentChunk.segments.push(segment);
       }
     }
 
@@ -119,12 +138,36 @@ async function processVideo(jobId: string, youtubeUrl: string) {
     if (currentChunk.text) {
       chunks.push({
         jobId,
+        userId,
         chunkId: `${jobId}-${chunks.length}`,
         textContent: currentChunk.text.trim(),
         startTimestamp: currentChunk.start.toString(),
         endTimestamp: (currentChunk.start + currentChunk.duration).toString(),
-        embedding: []
+        segmentCount: currentChunk.segments.length,
+        embedding: [],
+        metadata: {
+          processingVersion: 1
+        }
       });
+    }
+
+    // Validate chunks
+    if (chunks.length === 0) {
+      throw new Error('No valid chunks were created from the transcript');
+    }
+
+    // Verify chunk continuity and log any gaps
+    for (let i = 1; i < chunks.length; i++) {
+      const prevEnd = parseFloat(chunks[i-1].endTimestamp);
+      const currStart = parseFloat(chunks[i].startTimestamp);
+      const gap = currStart - prevEnd;
+      
+      if (gap > 1) { // Allow 1 second gap
+        console.warn(`Gap detected between chunks ${i-1} and ${i}: ${gap.toFixed(2)} seconds`);
+        console.warn(`Previous chunk end: ${prevEnd}, Current chunk start: ${currStart}`);
+        console.warn(`Previous chunk text: "${chunks[i-1].textContent.slice(-50)}..."`);
+        console.warn(`Current chunk text: "${chunks[i].textContent.slice(0, 50)}..."`);
+      }
     }
 
     // Only process chunks if we have them
@@ -186,7 +229,7 @@ async function processVideo(jobId: string, youtubeUrl: string) {
 
 export async function POST(request: Request) {
   try {
-    const { youtubeUrl, testMode = false } = await request.json();
+    const { youtubeUrl, testMode = false, userId } = await request.json();
     
     if (!youtubeUrl) {
       return NextResponse.json(
@@ -195,10 +238,18 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
     // Add test mode logging
     if (testMode) {
       console.log('Running in test mode');
       console.log('Input URL:', youtubeUrl);
+      console.log('User ID:', userId);
     }
 
     // Extract video ID
@@ -214,7 +265,7 @@ export async function POST(request: Request) {
       console.log('Extracted video ID:', videoId);
     }
 
-    // Check if this video has been processed before
+    // Check if this video has been processed before by this user
     const collections = await getCollections();
     if (!collections.videoJobsCollection || !collections.transcriptChunksCollection) {
       throw new Error('Database collections not initialized');
@@ -226,6 +277,7 @@ export async function POST(request: Request) {
 
     const existingJob = await collections.videoJobsCollection.findOne({ 
       youtubeUrl,
+      userId,
       status: 'completed',
       transcriptStatus: 'found'
     });
@@ -235,26 +287,40 @@ export async function POST(request: Request) {
     }
 
     if (existingJob) {
-      // If we have an existing completed job with transcript, reuse it
-      const existingChunks = await collections.transcriptChunksCollection.find({ jobId: existingJob.jobId }).toArray();
+      // If we have an existing completed job with transcript for this user, reuse it
+      const existingChunks = await collections.transcriptChunksCollection.find({ 
+        jobId: existingJob.jobId,
+        userId 
+      }).toArray();
+
       if (existingChunks && existingChunks.length > 0) {
         // Create a new job that references the existing chunks
         const newJobId = uuidv4();
         await createVideoJob({
           jobId: newJobId,
           youtubeUrl,
+          userId,
           status: 'completed',
           transcriptStatus: 'found',
-          progress: 'Using previously processed transcript'
+          progress: 'Using previously processed transcript',
+          processingMetadata: {
+            videoId,
+            transcriptSource: 'reused',
+            originalJobId: existingJob.jobId
+          }
         });
 
         // Copy existing chunks with new jobId
         const newChunks = existingChunks.map((chunk, index) => ({
           ...chunk,
-          _id: undefined, // Let MongoDB generate new _id
+          _id: undefined,
           jobId: newJobId,
-          chunkId: `${newJobId}-${index}`, // Use sequential index instead of reusing the old chunk number
-          createdAt: new Date()
+          chunkId: `${newJobId}-${index}`,
+          createdAt: new Date(),
+          metadata: {
+            originalJobId: chunk.jobId,
+            processingVersion: (chunk.metadata?.processingVersion || 0) + 1
+          }
         }));
 
         try {
@@ -266,7 +332,6 @@ export async function POST(request: Request) {
           });
         } catch (error) {
           console.error('Error creating transcript chunks:', error);
-          // If chunk creation fails, delete the job and throw error
           await collections.videoJobsCollection.deleteOne({ jobId: newJobId });
           throw new Error('Failed to create transcript chunks');
         }
@@ -280,13 +345,19 @@ export async function POST(request: Request) {
     const job = await createVideoJob({
       jobId,
       youtubeUrl,
+      userId,
       status: 'pending',
       transcriptStatus: 'processing',
-      progress: 'Starting processing...'
+      progress: 'Starting processing...',
+      processingMetadata: {
+        videoId,
+        processingStartTime: new Date(),
+        transcriptSource: 'youtube'
+      }
     });
 
     // Start processing in the background
-    processVideo(jobId, youtubeUrl).catch(error => {
+    processVideo(jobId, youtubeUrl, userId).catch(error => {
       console.error('Background processing error:', error);
     });
 

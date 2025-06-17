@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI, GenerateContentResponse, Part } from "@google/generative-ai";
+import { getEnvVar, isTestEnvironment } from './env';
+import { verifyTranscriptVideoId } from './mongodb';
 
 // It's good practice to ensure API keys are checked before class instantiation if possible,
 // or at least make it very clear in documentation that the service will fail without them.
@@ -6,135 +8,158 @@ if (!process.env.GEMINI_API_KEY) {
   console.warn('Warning: GEMINI_API_KEY environment variable is not set. GeminiService will fail if instantiated and used.');
 }
 
+interface TranscriptContext {
+  text: string;
+  startTimestamp: string;
+  endTimestamp: string;
+  jobId: string;
+  videoId: string;
+}
+
 export class GeminiService {
-  private model;
-  private embeddingModel;
-  private genAIInstance: GoogleGenerativeAI; // Renamed for clarity
+  private genAI: GoogleGenerativeAI;
+  private model: any;
 
   constructor() {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('CRITICAL: GeminiService cannot be instantiated without GEMINI_API_KEY.');
+    const apiKey = getEnvVar('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY is required for GeminiService');
     }
-    this.genAIInstance = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    // Consider making model name configurable (e.g., via env var or constructor param)
-    this.model = this.genAIInstance.getGenerativeModel({ model: "gemini-1.5-pro" }); 
-    this.embeddingModel = this.genAIInstance.getGenerativeModel({ model: "embedding-001" });
-  }
-
-  async generateEmbedding(text: string): Promise<number[]> {
+    this.genAI = new GoogleGenerativeAI(apiKey);
     try {
-      const result = await this.embeddingModel.embedContent(text);
-      return result.embedding.values;
-    } catch (error: any) {
-      console.error('Error generating Gemini embedding:', JSON.stringify(error, null, 2));
-      throw new Error(`Gemini Embedding Error: ${error.message || 'Failed to generate embedding'}`);
+      this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    } catch (error) {
+      console.error('Error initializing Gemini model:', error);
+      throw new Error('Failed to initialize Gemini model. Please check your API key and model name.');
     }
   }
 
-  // RAG-based answer generation (streaming) - Retained for potential non-YouTube file use or specific scenarios
-  async * generateAnswer(context: Array<{ text: string; startTimestamp: string; endTimestamp: string }>, question: string, videoId?: string): AsyncGenerator<string, void, undefined> {
-    console.log("Gemini RAG: Generating answer for question:", question.substring(0, 50) + "..."); // Log snippet
-    
-    // If we have a videoId but no context, use the direct YouTube URL approach
-    if (videoId && (!context || context.length === 0)) {
-      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      yield* this.generateAnswerFromYouTubeUrlDirectly(youtubeUrl, question);
-      return;
+  private async validateContexts(contexts: TranscriptContext[]): Promise<void> {
+    if (!contexts || contexts.length === 0) {
+      throw new Error('No transcript context provided');
     }
 
-    const contextString = context
-      .map(c => `[${c.startTimestamp}s - ${c.endTimestamp}s] ${c.text}`)
-      .join('\n\n');
+    // Get the videoId from the first context
+    const expectedVideoId = contexts[0].videoId;
+    if (!expectedVideoId) {
+      throw new Error('No videoId found in transcript context');
+    }
 
-    const prompt = `You are ChatPye, an intelligent and friendly AI video learning companion. Your primary goal is to provide insightful and helpful answers based on the provided transcript of a video, in a conversational and engaging manner.
+    // Verify that all contexts have the same videoId
+    const mismatchedContexts = contexts.filter(context => context.videoId !== expectedVideoId);
+    if (mismatchedContexts.length > 0) {
+      console.error('Found contexts with mismatched videoId:', {
+        expectedVideoId,
+        mismatchedContexts: mismatchedContexts.map(c => ({
+          jobId: c.jobId,
+          actualVideoId: c.videoId
+        }))
+      });
+      throw new Error('Transcript contexts contain mismatched video IDs');
+    }
 
-**Your Task:**
-Answer the user's QUESTION using *only* the given TRANSCRIPT SEGMENTS.
+    // Verify that the videoId matches the job for each context
+    for (const context of contexts) {
+      const isValid = await verifyTranscriptVideoId(context.jobId, expectedVideoId);
+      if (!isValid) {
+        console.error('Invalid transcript context:', {
+          jobId: context.jobId,
+          videoId: context.videoId,
+          expectedVideoId
+        });
+        throw new Error(`Transcript context does not match the provided videoId: ${expectedVideoId}`);
+      }
+    }
 
-**Key Instructions:**
-1.  **Conversational Tone:**
-    *   Engage directly with the user. You can use phrases like "Based on the transcript, it seems that..." or "The video explains..." or "In the segments provided, you'll find...".
-    *   Avoid stiff language. Match the video's tone where appropriate from the transcript.
-    *   Instead of "The speaker says...", try "The video mentions..." or "The transcript indicates...".
-2.  **Timestamp Integration (Crucial and Precise):**
-    *   When your answer is based on specific information from the transcript, you MUST cite the relevant timestamp(s).
-    *   Use the format \`[startTimeInSeconds - endTimeInSeconds]\` or \`[timestampInSeconds]\` if it's a single point (e.g., \`[123s - 128s]\`, \`[45s]\`). These are raw seconds and will be processed by the system later.
-    *   Integrate these timestamps naturally. For example: "A key concept is discussed around \`[123s - 128s]\`."
-3.  **Answer Quality:**
-    *   Be accurate and stick strictly to the information present in the TRANSCRIPT SEGMENTS. Do not introduce external knowledge.
-    *   Provide comprehensive yet concise answers.
-    *   If the question requires analysis, provide it based *only* on the transcript.
-4.  **Formatting for Readability:**
-    *   Use Markdown (bullet points, bolding, italics) to structure your answer.
-5.  **Handling Missing Information:**
-    *   If the transcript segments do not contain information to answer the QUESTION, clearly state that. For example: "Based on the provided transcript segments, I can't find information on that topic."
+    // Verify timestamp continuity
+    const sortedContexts = [...contexts].sort((a, b) => 
+      parseFloat(a.startTimestamp) - parseFloat(b.startTimestamp)
+    );
 
-**TRANSCRIPT SEGMENTS:**
-${contextString}
-
-**QUESTION:**
-${question}
-
-**Your Answer (in Markdown, with natural language and timestamps where relevant):**`;
-
-    try {
-      // console.log("Gemini RAG: Calling generateContentStream with prompt."); // Debug
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      yield text;
-      // console.log("Gemini RAG: Stream generation complete."); // Debug
-    } catch (error: any) {
-      console.error('Detailed Gemini API Error in RAG service (generateAnswer):', JSON.stringify(error, null, 2));
-      throw new Error(`Gemini API RAG Error: ${error.message || 'Failed to get response from Gemini'}`);
+    for (let i = 1; i < sortedContexts.length; i++) {
+      const prevEnd = parseFloat(sortedContexts[i-1].endTimestamp);
+      const currStart = parseFloat(sortedContexts[i].startTimestamp);
+      
+      if (currStart < prevEnd) {
+        console.error('Found overlapping timestamps:', {
+          previous: {
+            jobId: sortedContexts[i-1].jobId,
+            end: prevEnd
+          },
+          current: {
+            jobId: sortedContexts[i].jobId,
+            start: currStart
+          }
+        });
+        throw new Error('Transcript contexts contain overlapping timestamps');
+      }
     }
   }
 
-  // Direct YouTube URL based answer generation (streaming)
-  async * generateAnswerFromYouTubeUrlDirectly(youtubeUrl: string, question: string): AsyncGenerator<string, void, undefined> {
-    console.log("Gemini Direct: Generating answer for YouTube URL:", youtubeUrl, "Question:", question.substring(0,50)+"...");
-    
-    // Instead of trying to process the URL directly, we'll use the RAG approach
-    // with the transcript chunks that were already processed
-    const prompt = `You are ChatPye, an intelligent and friendly AI video learning companion. Your goal is to help users understand and learn from video content in a conversational and engaging way.
-
-**Your Task:**
-Answer the user's QUESTION based on the video's content. Strive for a helpful, clear, and natural-sounding response.
-
-**Key Instructions:**
-1.  **Conversational Tone:**
-    *   Engage directly with the user. You can use phrases like "In this video, you'll find that..." or "The video explains..." or "When discussing X, the video highlights...".
-    *   Avoid stiff or overly academic language unless the video's content itself is highly academic. Match the video's tone where appropriate.
-    *   Instead of phrases like "The speaker says...", try alternatives like "The video points out..." or "You'll learn that...".
-2.  **Timestamp Integration (Crucial and Precise):**
-    *   When your answer refers to specific information from the video, you MUST cite the relevant timestamp(s).
-    *   Use clear timestamp formats like \`[MM:SS]\` or \`[HH:MM:SS]\` (e.g., \`[02:35]\`, \`[01:10:23]\`).
-    *   Integrate timestamps naturally into your sentences. For example: "The main concept is introduced around \`[01:15]\`..." or "You can see this demonstrated at \`[05:30]\`."
-3.  **Answer Quality:**
-    *   Be accurate and base your answers *only* on the information present in the video. Do not introduce external knowledge or make assumptions.
-    *   Provide comprehensive yet concise explanations.
-    *   If the video covers a topic in steps, try to present your answer in a similarly clear, step-by-step manner if it helps understanding.
-4.  **Formatting for Readability:**
-    *   Use Markdown (like bullet points, bolding, italics) to structure your answer and improve readability, especially for lists, key terms, or summaries.
-5.  **Handling Missing Information:**
-    *   If the video content does not provide an answer to the QUESTION, clearly and politely state that the information isn't covered in this video. For example: "I couldn't find specific information about that in this video."
-
-**User's QUESTION:**
-${question}
-
-**Your Answer (in Markdown, with natural language and timestamps where relevant):**`;
-
+  async *generateAnswerStream(contexts: TranscriptContext[]): AsyncGenerator<string> {
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      yield text;
-    } catch (error: any) {
-      console.error('Detailed Gemini API Error in service (generateAnswerFromYouTubeUrlDirectly):', JSON.stringify(error, null, 2));
-      throw new Error(`Gemini API Error: ${error.message || 'Failed to get response from Gemini'}`);
+      // Validate contexts before processing
+      await this.validateContexts(contexts);
+
+      // Construct the prompt with strict instructions
+      const prompt = `You are an AI assistant answering questions about a specific YouTube video.
+The video ID is: ${contexts[0].videoId}
+
+IMPORTANT RULES:
+1. ONLY use information from the provided transcript segments
+2. If the answer cannot be found in the transcript, say so
+3. Include timestamps in [MM:SS] format for any information you reference
+4. Do not make assumptions or use information from other videos
+5. If you're unsure about something, say so
+
+Here are the relevant transcript segments:
+
+${contexts.map(ctx => `[${ctx.startTimestamp}s - ${ctx.endTimestamp}s] ${ctx.text}`).join('\n\n')}
+
+Please provide a clear and concise answer based ONLY on these transcript segments.`;
+
+      const result = await this.model.generateContentStream(prompt);
+      
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) {
+          yield text;
+        }
+      }
+    } catch (error) {
+      console.error('Error in generateAnswerStream:', error);
+      throw error;
+    }
+  }
+
+  async *generateAnswerFromYouTubeUrlDirectly(youtubeUrl: string, question: string): AsyncGenerator<string> {
+    try {
+      const prompt = `You are an AI assistant answering questions about a YouTube video.
+The video URL is: ${youtubeUrl}
+
+IMPORTANT RULES:
+1. ONLY use information from the video content
+2. If you cannot answer based on the video content, say so
+3. Do not make assumptions or use information from other videos
+4. If you're unsure about something, say so
+
+Question: ${question}
+
+Please provide a clear and concise answer based ONLY on the video content.`;
+
+      const result = await this.model.generateContentStream(prompt);
+      
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) {
+          yield text;
+        }
+      }
+    } catch (error) {
+      console.error('Error in generateAnswerFromYouTubeUrlDirectly:', error);
+      throw error;
     }
   }
 }
 
-// Create a singleton instance
 export const geminiService = new GeminiService(); 

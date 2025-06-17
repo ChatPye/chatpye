@@ -8,12 +8,14 @@ interface YouTubeUrlProcessorProps {
   onVideoProcessed: (videoId: string, videoInfo: any) => void
   onProcessingStatus: (status: string) => void
   disabled?: boolean
+  userId?: string
 }
 
 export function YouTubeUrlProcessor({
   onVideoProcessed,
   onProcessingStatus,
-  disabled = false
+  disabled = false,
+  userId = 'anonymous'
 }: YouTubeUrlProcessorProps) {
   const [url, setUrl] = useState("")
   const [jobId, setJobId] = useState<string | null>(null)
@@ -95,7 +97,10 @@ export function YouTubeUrlProcessor({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ youtubeUrl: url }),
+        body: JSON.stringify({ 
+          youtubeUrl: url,
+          userId 
+        }),
       })
 
       if (!response.ok) {

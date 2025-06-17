@@ -1,7 +1,13 @@
 {
-  "/page": "app/page.js",
-  "/api/video-info/route": "app/api/video-info/route.js",
-  "/api/video/process/route": "app/api/video/process/route.js",
+  "/_not-found": "app/_not-found.js",
+  "/api/hello/route": "app/api/hello/route.js",
+  "/api/test/route": "app/api/test/route.js",
+  "/api/video/chapters/route": "app/api/video/chapters/route.js",
+  "/api/chat/route": "app/api/chat/route.js",
+  "/api/test-db/route": "app/api/test-db/route.js",
   "/api/video/status/[jobId]/route": "app/api/video/status/[jobId]/route.js",
-  "/api/chat/route": "app/api/chat/route.js"
+  "/api/video/process/route": "app/api/video/process/route.js",
+  "/api/video/qa/route": "app/api/video/qa/route.js",
+  "/page": "app/page.js",
+  "/api/video-info/route": "app/api/video-info/route.js"
 }

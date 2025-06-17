@@ -17,6 +17,7 @@ interface VideoUploadProps {
   isAuthenticated: boolean
   isPaidUser: boolean
   disabled?: boolean
+  userId?: string
 }
 
 export function VideoUpload({
@@ -24,7 +25,8 @@ export function VideoUpload({
   onYouTubeUrlSubmit,
   isAuthenticated,
   isPaidUser,
-  disabled = false
+  disabled = false,
+  userId = 'anonymous'
 }: VideoUploadProps) {
   const [url, setUrl] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
