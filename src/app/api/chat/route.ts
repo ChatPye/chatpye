@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getTranscriptChunks, getVideoJob, getCachedQAResponse, saveQAResponse } from "@/lib/mongodb"
 import { findRelevantChunks } from "@/lib/embeddings"
+import { extractVideoId } from '@/lib/youtube';
 import { openAIService } from '@/lib/openai';
 import { anthropicService } from '@/lib/anthropic';
 import { geminiService } from '@/lib/gemini';
@@ -138,11 +139,33 @@ export async function POST(request: Request) {
         }));
       }
 
+      let actualYoutubeVideoId: string | undefined = videoId; // Use videoId from request if provided
+
+      if (jobId && !actualYoutubeVideoId) { // If jobId is there but no direct videoId from request, resolve it
+          const job = await getVideoJob(jobId); // Fetch job details using the UUID jobId
+          if (job && job.youtubeUrl) {
+              const extractedId = extractVideoId(job.youtubeUrl);
+              if (extractedId) {
+                  actualYoutubeVideoId = extractedId;
+              } else {
+                  console.warn(`Could not extract YouTube videoId from URL: ${job.youtubeUrl} for jobId: ${jobId}`);
+                  // Decide on fallback: either error, or proceed without it if geminiService can handle undefined
+              }
+          } else {
+              console.warn(`Job not found or no youtubeUrl for jobId: ${jobId} when trying to determine actualYoutubeVideoId.`);
+              // Decide on fallback
+          }
+      }
+
+      // Ensure actualYoutubeVideoId is defined if required by the logic path in geminiService
+      // (The specific path in geminiService that uses it is when context is empty)
+      // For now, we'll pass it as is. It will be undefined if not resolved and not in request.
+
       // 3. Generate answer using Gemini
       const geminiGenerator = geminiService.generateAnswer(
         serviceContext,
         message,
-        jobId
+        actualYoutubeVideoId // Pass the resolved or request-provided YouTube Video ID here
       );
 
       // Collect the response from the generator
