@@ -1,32 +1,5 @@
-import { YoutubeTranscript } from 'youtube-transcript';
-
-export function isValidYouTubeUrl(url: string): boolean {
-  const patterns = [
-    /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})(?:&[^&\n]*)?$/,
-    /^(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/)([a-zA-Z0-9_-]{11})(?:\?[^&\n]*)?$/,
-    /^(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-    /^(?:https?:\/\/)?(?:www\.)?youtube\.com\/v\/([a-zA-Z0-9_-]{11})/
-  ]
-  return patterns.some(pattern => pattern.test(url))
-}
-
-export function extractVideoId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=)([^&\n?#]+)/,
-    /(?:youtu\.be\/)([^&\n?#]+)/,
-    /youtube\.com\/embed\/([^&\n?#]+)/,
-    /youtube\.com\/v\/([^&\n?#]+)/
-  ]
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match && match[1]) {
-      return match[1]
-    }
-  }
-  
-  return null
-}
+import { fetchTranscript } from 'youtube-transcript-plus';
+import { extractVideoId } from './youtube-client';
 
 export async function getVideoDetails(videoId: string) {
   try {
@@ -66,18 +39,21 @@ export interface TranscriptSegment {
 
 export async function getYouTubeTranscript(youtubeUrl: string): Promise<TranscriptSegment[]> {
   try {
-    const transcriptResponse = await YoutubeTranscript.fetchTranscript(youtubeUrl);
+    const transcriptResponse = await fetchTranscript(youtubeUrl);
+    
     if (!transcriptResponse || transcriptResponse.length === 0) {
       throw new Error("Library returned an empty transcript.");
     }
-    const transcript: TranscriptSegment[] = transcriptResponse.map(item => ({
+
+    const transcript: TranscriptSegment[] = transcriptResponse.map((item: any) => ({
       text: item.text,
       start: item.offset,
-      duration: item.duration
+      duration: item.duration,
     }));
+    
     return transcript;
   } catch (error) {
-    console.error(`Error fetching transcript with 'youtube-transcript' for URL: ${youtubeUrl}. Full error object:`, error);
+    console.error(`Error fetching transcript for URL: ${youtubeUrl}.`, error);
     throw new Error(`Failed to fetch transcript. It may not be available or is in an unsupported format.`);
   }
 }
@@ -93,3 +69,47 @@ function formatTimestamp(seconds: number): string {
     remainingSeconds.toString().padStart(2, '0')
   ].join(':');
 } 
+
+export function getChaptersFromTranscript(transcript: TranscriptSegment[], chapterDurationThreshold: number = 300): { title: string; start: number }[] {
+  if (!transcript || transcript.length === 0) {
+    return [];
+  }
+
+  const chapters: { title: string; start: number }[] = [];
+  let currentChapterText = '';
+  let chapterStartTime = transcript[0].start;
+  let lastSegmentEndTime = chapterStartTime;
+
+  transcript.forEach((segment: any, index: number) => {
+    const segmentEndTime = segment.start + segment.duration;
+
+    // Check if there's a significant gap between segments to infer a new chapter
+    if (segment.start - lastSegmentEndTime > 5 && currentChapterText) { // 5s gap
+      chapters.push({ title: currentChapterText.trim(), start: chapterStartTime });
+      currentChapterText = '';
+      chapterStartTime = segment.start;
+    }
+    
+    currentChapterText += segment.text + ' ';
+
+    // Split chapters by duration as a fallback
+    if (segmentEndTime - chapterStartTime >= chapterDurationThreshold && currentChapterText) {
+      chapters.push({ title: currentChapterText.trim(), start: chapterStartTime });
+      currentChapterText = '';
+      chapterStartTime = segmentEndTime;
+    }
+    
+    lastSegmentEndTime = segmentEndTime;
+  });
+
+  // Add the last chapter if it exists
+  if (currentChapterText.trim()) {
+    chapters.push({ title: currentChapterText.trim(), start: chapterStartTime });
+  }
+
+  // A simple heuristic to generate chapter titles from the chapter text
+  return chapters.map(chapter => ({
+    ...chapter,
+    title: chapter.title.split(' ').slice(0, 5).join(' ') + '...'
+  }));
+}

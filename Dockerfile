@@ -1,5 +1,5 @@
 # Use a more recent and secure version of Node.js
-FROM node:20-alpine AS base
+FROM node:20-alpine3.18 AS base
 
 # Install required packages
 RUN apk add --no-cache wget ca-certificates

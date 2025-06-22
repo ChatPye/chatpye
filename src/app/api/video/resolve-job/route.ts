@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCollections, VideoJob } from '@/lib/mongodb';
-import { extractVideoId } from '@/lib/youtube';
+import { extractVideoId } from '@/lib/youtube-client';
 
 export const dynamic = 'force-dynamic';
 

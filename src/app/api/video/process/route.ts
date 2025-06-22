@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { createVideoJob, updateVideoJob, createTranscriptChunks, updateTranscriptChunkEmbeddings } from '@/lib/mongodb';
-import { getYouTubeTranscript, extractVideoId, getVideoDetails, TranscriptSegment } from '@/lib/youtube';
+import { getYouTubeTranscript, getVideoDetails, TranscriptSegment, getChaptersFromTranscript } from '@/lib/youtube';
+import { extractVideoId } from '@/lib/youtube-client';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '@/lib/embeddings';
 import { getCollections } from '@/lib/mongodb';
@@ -80,6 +81,12 @@ async function processVideo(jobId: string, youtubeUrl: string, userId: string) {
     // If we have a transcript, process it
     await updateVideoJob(jobId, { progress: 'Processing transcript...' });
 
+    // New: Generate and store chapters from the transcript
+    const chapters = getChaptersFromTranscript(transcript);
+    if (chapters.length > 0) {
+      await updateVideoJob(jobId, { chapters });
+    }
+
     // Create transcript chunks with a maximum size
     const MAX_CHUNK_SIZE = 1000; // characters
     const chunks = [];
@@ -111,7 +118,8 @@ async function processVideo(jobId: string, youtubeUrl: string, userId: string) {
           segmentCount: currentChunk.segments.length,
           embedding: [],
           metadata: {
-            processingVersion: 1
+            processingVersion: 1,
+            videoId: videoId,
           }
         });
         
@@ -146,7 +154,8 @@ async function processVideo(jobId: string, youtubeUrl: string, userId: string) {
         segmentCount: currentChunk.segments.length,
         embedding: [],
         metadata: {
-          processingVersion: 1
+          processingVersion: 1,
+          videoId: videoId,
         }
       });
     }
@@ -318,6 +327,8 @@ export async function POST(request: Request) {
           chunkId: `${newJobId}-${index}`,
           createdAt: new Date(),
           metadata: {
+            ...chunk.metadata,
+            videoId: videoId,
             originalJobId: chunk.jobId,
             processingVersion: (chunk.metadata?.processingVersion || 0) + 1
           }

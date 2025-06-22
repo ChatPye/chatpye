@@ -10,6 +10,7 @@ export interface VideoJob {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   transcriptStatus?: 'processing' | 'found' | 'not_found' | 'failed' | 'error';
   progress?: string; // Optional progress message
+  chapters?: { title: string; start: number }[]; // To store video chapters
   createdAt?: Date;
   updatedAt?: Date;
   processingMetadata?: {
@@ -162,13 +163,14 @@ export async function updateVideoJob(jobId: string, updates: Partial<VideoJob>):
 }
 
 // --- Transcript Chunk Functions ---
-export async function createTranscriptChunks(chunksData: TranscriptChunk[]): Promise<void> {
+export async function createTranscriptChunks(chunksData: Omit<TranscriptChunk, '_id' | 'createdAt'>[]): Promise<void> {
   const { transcriptChunksCollection } = await getCollections();
   if (!transcriptChunksCollection) throw new Error("transcriptChunksCollection not initialized");
   if (chunksData.length === 0) return;
 
   const chunksToInsert = chunksData.map(chunk => ({
     ...chunk,
+    _id: new ObjectId(),
     createdAt: new Date()
   }));
 
@@ -182,7 +184,7 @@ export async function createTranscriptChunks(chunksData: TranscriptChunk[]): Pro
     }
 
     // Then insert the new chunks
-    const result = await transcriptChunksCollection.insertMany(chunksToInsert);
+    const result = await transcriptChunksCollection.insertMany(chunksToInsert as TranscriptChunk[]);
     console.log(`Successfully inserted ${result.insertedCount} transcript chunks`);
   } catch (error) {
     console.error('Error in createTranscriptChunks:', error);

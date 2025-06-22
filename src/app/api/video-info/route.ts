@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getVideoDetails } from "@/lib/youtube"
-import { extractVideoId } from "@/lib/youtube"
+import { extractVideoId } from "@/lib/youtube-client"
 
 export const runtime = "nodejs"
 
