@@ -1,4 +1,4 @@
-# ChatPye - YouTube Video Chat Assistant
+# ChatPye - Your AI-powered video learning companion
 
 ChatPye is a personalized, AI-native tutor designed to revolutionise video-based learning and upskilling.
 
