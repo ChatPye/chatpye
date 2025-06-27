@@ -1,11 +1,11 @@
 # ChatPye - YouTube Video Chat Assistant
 
-ChatPye is a Chrome extension that adds an AI-powered chat interface to YouTube videos, allowing users to ask questions and get instant answers about the video content.
+ChatPye is a personalized, AI-native tutor designed to revolutionise video-based learning and upskilling.
 
 ## Features
 
 - Real-time chat interface for YouTube videos
-- AI-powered responses using GPT-4
+- AI-powered responses using Gemini
 - Clean and modern UI design
 - Tab-based interface for chat and future features
 
